@@ -13,7 +13,7 @@ class TestFastQuery(APITestCase):
         self.fixture = create_fixture()
 
     def _user_keys(self):
-        return set([
+        return {
             'last_name',
             'name',
             'favorite_pet_id',
@@ -22,7 +22,7 @@ class TestFastQuery(APITestCase):
             'location_id',
             'id',
             'is_dead',
-        ])
+        }
 
     def test_fk_prefetch(self):
         with self.assertNumQueries(2):
@@ -35,13 +35,8 @@ class TestFastQuery(APITestCase):
             )
             result = q.execute()
 
-        self.assertTrue(
-            all([_['location'] for _ in result])
-        )
-        self.assertEqual(
-            set(['blob', 'id', 'name']),
-            set(result[0]['location'].keys())
-        )
+        self.assertTrue(all(_['location'] for _ in result))
+        self.assertEqual({'blob', 'id', 'name'}, set(result[0]['location'].keys()))
 
     def test_m2m_prefetch(self):
         with self.assertNumQueries(3):
@@ -54,24 +49,16 @@ class TestFastQuery(APITestCase):
             )
             result = q.execute()
 
-        self.assertTrue(
-            all([_['groups'] for _ in result])
-        )
+        self.assertTrue(all(_['groups'] for _ in result))
         self.assertTrue(
             isinstance(result[0]['groups'], list)
         )
-        self.assertEqual(
-            set(['id', 'name']),
-            set(result[0]['groups'][0].keys())
-        )
+        self.assertEqual({'id', 'name'}, set(result[0]['groups'][0].keys()))
 
     def test_o2o_prefetch(self):
         # Create profiles
         for i in range(1, 4):
-            Profile.objects.create(
-                user=User.objects.get(pk=i),
-                display_name='User %s' % i
-            )
+            Profile.objects.create(user=User.objects.get(pk=i), display_name=f'User {i}')
 
         with self.assertNumQueries(2):
             q = FastQuery(Profile.objects.all())
@@ -83,9 +70,7 @@ class TestFastQuery(APITestCase):
             )
             result = q.execute()
 
-        self.assertTrue(
-            all([_['user'] for _ in result])
-        )
+        self.assertTrue(all(_['user'] for _ in result))
         self.assertEqual(
             self._user_keys(),
             set(result[0]['user'].keys())
@@ -94,10 +79,7 @@ class TestFastQuery(APITestCase):
     def test_reverse_o2o_prefetch(self):
         # Create profiles
         for i in range(1, 4):
-            Profile.objects.create(
-                user=User.objects.get(pk=i),
-                display_name='User %s' % i
-            )
+            Profile.objects.create(user=User.objects.get(pk=i), display_name=f'User {i}')
 
         with self.assertNumQueries(2):
             q = FastQuery(User.objects.all())
@@ -109,16 +91,14 @@ class TestFastQuery(APITestCase):
             )
             result = q.execute()
 
-        self.assertTrue(
-            all(['profile' in _ for _ in result])
-        )
+        self.assertTrue(all('profile' in _ for _ in result))
         user = sorted(
             result,
             key=lambda x: 1 if x['profile'] is None else 0
         )[0]
         self.assertEqual(
-            set(['display_name', 'user_id', 'id', 'thumbnail_url']),
-            set(user['profile'].keys())
+            {'display_name', 'user_id', 'id', 'thumbnail_url'},
+            set(user['profile'].keys()),
         )
 
     def test_m2o_prefetch(self):
@@ -132,9 +112,7 @@ class TestFastQuery(APITestCase):
             )
             result = q.execute()
 
-        self.assertTrue(
-            all(['user_set' in obj for obj in result])
-        )
+        self.assertTrue(all('user_set' in obj for obj in result))
         location = six.next((
             o for o in result if o['user_set'] and len(o['user_set']) > 1
         ))

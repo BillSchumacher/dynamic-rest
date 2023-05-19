@@ -6,7 +6,7 @@ SECRET_KEY = 'test'
 INSTALL_DIR = '/usr/local/altschool/dynamic-rest/'
 
 STATIC_URL = '/static/'
-STATIC_ROOT = os.environ.get('STATIC_ROOT', INSTALL_DIR + 'www/static')
+STATIC_ROOT = os.environ.get('STATIC_ROOT', f'{INSTALL_DIR}www/static')
 
 ENABLE_INTEGRATION_TESTS = os.environ.get('ENABLE_INTEGRATION_TESTS', False)
 

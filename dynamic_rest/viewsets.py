@@ -195,21 +195,18 @@ class WithDynamicViewSetMixin(object):
                 else:
                     continue
 
-            if name.startswith(prefix):
-                if name.endswith('}'):
-                    name = name[offset:-1]
-                elif name.endswith('}[]'):
-                    # strip off trailing []
-                    # this fixes an Ember queryparams issue
-                    name = name[offset:-3]
-                else:
+            if not name.startswith(prefix):
+                continue
+            if name.endswith('}'):
+                name = name[offset:-1]
+            elif name.endswith('}[]'):
+                # strip off trailing []
+                # this fixes an Ember queryparams issue
+                name = name[offset:-3]
+            else:
                     # malformed argument like:
                     # filter{foo=bar
-                    raise exceptions.ParseError(
-                        '"%s" is not a well-formed filter key.' % name
-                    )
-            else:
-                continue
+                raise exceptions.ParseError(f'"{name}" is not a well-formed filter key.')
             params_map[name] = value
 
         return params_map if not raw else None
@@ -260,10 +257,7 @@ class WithDynamicViewSetMixin(object):
                             current_fields = current_fields[segment]
                     elif not last:
                         # empty segment must be the last segment
-                        raise exceptions.ParseError(
-                            '"%s" is not a valid field.' %
-                            field
-                        )
+                        raise exceptions.ParseError(f'"{field}" is not a valid field.')
 
         self._request_fields = request_fields
         return request_fields
@@ -278,12 +272,7 @@ class WithDynamicViewSetMixin(object):
         elif is_truthy(patch_all):
             patch_all = True
         else:
-            raise exceptions.ParseError(
-                '"%s" is not valid for %s' % (
-                    patch_all,
-                    self.PATCH_ALL
-                )
-            )
+            raise exceptions.ParseError(f'"{patch_all}" is not valid for {self.PATCH_ALL}')
         return patch_all
 
     def get_request_debug(self):
@@ -295,22 +284,17 @@ class WithDynamicViewSetMixin(object):
         return is_truthy(sideloading) if sideloading is not None else None
 
     def is_update(self):
-        if (
-            self.request and
-            self.request.method.upper() in UPDATE_REQUEST_METHODS
-        ):
-            return True
-        else:
-            return False
+        return bool(
+            (
+                self.request
+                and self.request.method.upper() in UPDATE_REQUEST_METHODS
+            )
+        )
 
     def is_delete(self):
-        if (
-            self.request and
-            self.request.method.upper() == DELETE_REQUEST_METHOD
-        ):
-            return True
-        else:
-            return False
+        return bool(
+            (self.request and self.request.method.upper() == DELETE_REQUEST_METHOD)
+        )
 
     def get_serializer(self, *args, **kwargs):
         if 'request_fields' not in kwargs:
@@ -378,7 +362,7 @@ class WithDynamicViewSetMixin(object):
 
         # Prefix include/exclude filters with field_name so it's scoped to
         # the parent object.
-        field_prefix = field_name + '.'
+        field_prefix = f'{field_name}.'
         self._prefix_inex_params(request, self.INCLUDE, field_prefix)
         self._prefix_inex_params(request, self.EXCLUDE, field_prefix)
 
@@ -390,7 +374,7 @@ class WithDynamicViewSetMixin(object):
         serializer = self.get_serializer()
         field = serializer.fields.get(field_name)
         if field is None:
-            raise ValidationError('Unknown field: "%s".' % field_name)
+            raise ValidationError(f'Unknown field: "{field_name}".')
 
         # Query for root object, with related field prefetched
         queryset = self.get_queryset()
@@ -464,14 +448,10 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
         for name, value in six.iteritems(data):
             field = fields.get(name, None)
             if field is None:
-                raise ValidationError(
-                    'Unknown field: "%s"' % name
-                )
+                raise ValidationError(f'Unknown field: "{name}"')
             source = field.source or name
             if source == '*' or field.read_only:
-                raise ValidationError(
-                    'Cannot update field: "%s"' % name
-                )
+                raise ValidationError(f'Cannot update field: "{name}"')
             validated[source] = value
         return validated
 
@@ -589,8 +569,7 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
             else:
                 # bulk payload update
                 partial = 'partial' in kwargs
-                bulk_payload = self._get_bulk_payload(request)
-                if bulk_payload:
+                if bulk_payload := self._get_bulk_payload(request):
                     return self._bulk_update(bulk_payload, partial)
 
         # singular update
@@ -690,8 +669,7 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
             {"name": "Lucky", "age": 3}
         ]
         """
-        bulk_payload = self._get_bulk_payload(request)
-        if bulk_payload:
+        if bulk_payload := self._get_bulk_payload(request):
             return self._create_many(bulk_payload)
         return super(DynamicModelViewSet, self).create(
             request, *args, **kwargs)
@@ -723,8 +701,7 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
             {"id": 2}
         ]
         """
-        bulk_payload = self._get_bulk_payload(request)
-        if bulk_payload:
+        if bulk_payload := self._get_bulk_payload(request):
             return self._destroy_many(bulk_payload)
         lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
         if lookup_url_kwarg not in kwargs:

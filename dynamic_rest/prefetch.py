@@ -43,7 +43,7 @@ class FastObject(dict):
             return self._slow_getattr(name)
 
     def __setattr__(self, name, value):
-        if name != 'pk_field' and name != 'pk':
+        if name not in ['pk_field', 'pk']:
             self[name] = value
         else:
             super(FastObject, self).__setattr__(name, value)
@@ -114,7 +114,7 @@ class FastPrefetch(object):
 
         field, ftype = get_model_field_and_type(model, field_name)
         if not ftype:
-            raise RuntimeError("%s is not prefetchable" % field_name)
+            raise RuntimeError(f"{field_name} is not prefetchable")
 
         qs = get_remote_model(field).objects.all()
 
@@ -283,12 +283,13 @@ class FastQuery(FastQueryCompatMixin, object):
                     fast_prefetch.field,
                     queryset=queryset
                 )
+
             prefetches = [
                 make_prefetch(
                     prefetch
                 ) for prefetch in self.prefetches.values()
             ]
-            if len(prefetches) > 0:
+            if prefetches:
                 qs = qs.prefetch_related(*prefetches)
             self._data = FastList(
                 map(lambda obj: SlowObject(
@@ -314,22 +315,16 @@ class FastQuery(FastQueryCompatMixin, object):
 
         # Query hasn't yet been executed. Update queryset.
         if isinstance(k, slice):
-            if k.start is not None:
-                start = int(k.start)
-            else:
-                start = None
-            if k.stop is not None:
-                stop = int(k.stop)
-            else:
-                stop = None
             if k.step:
                 raise TypeError("Stepping not supported")
 
+            start = int(k.start) if k.start is not None else None
+            stop = int(k.stop) if k.stop is not None else None
             self.queryset.query.set_limits(start, stop)
-            return self.execute()
         else:
             self.queryset.query.set_limits(k, k+1)
-            return self.execute()
+
+        return self.execute()
 
     def __len__(self):
         return len(self.execute())
@@ -383,9 +378,7 @@ class FastQuery(FastQueryCompatMixin, object):
         #           prefetch queryset using `pk__in`.
 
         id_field = field.attname
-        ids = set([
-            row[id_field] for row in data if id_field in row
-        ])
+        ids = {row[id_field] for row in data if id_field in row}
         prefetched_data = prefetch.query.get_ids(ids).execute()
         id_map = self._make_id_map(prefetched_data)
 
@@ -409,7 +402,7 @@ class FastQuery(FastQueryCompatMixin, object):
         # If prefetching User.profile, construct filter like:
         #   Profile.objects.filter(user__in=<user_ids>)
         remote_field = reverse_o2o_field_name(field)
-        remote_filter_key = '%s__in' % remote_field
+        remote_filter_key = f'{remote_field}__in'
         filter_args = {remote_filter_key: my_ids}
 
         # Fetch remote objects
@@ -458,9 +451,7 @@ class FastQuery(FastQueryCompatMixin, object):
         if reverse_field is None:
             # Note: We can't just reuse self.queryset here because it's
             #       been sliced already.
-            filters = {
-                field.attname + '__isnull': False
-            }
+            filters = {f'{field.attname}__isnull': False}
             qs = self.queryset.model.objects.filter(
                 pk__in=my_ids, **filters
             )
@@ -471,16 +462,14 @@ class FastQuery(FastQueryCompatMixin, object):
         else:
             # Get reverse mapping (for User.groups, get Group.users)
             # Note: `qs` already has base filter applied on remote model.
-            filters = {
-                reverse_field+'__in': my_ids
-            }
+            filters = {f'{reverse_field}__in': my_ids}
             joins = list(base_qs.filter(**filters).values_list(
                 remote_pk_field,
                 reverse_field
             ))
 
         # Fetch remote objects, as values.
-        remote_ids = set([o[0] for o in joins])
+        remote_ids = {o[0] for o in joins}
         remote_objects = prefetch.query.get_ids(remote_ids).execute()
         id_map = self._make_id_map(remote_objects, pk_field=remote_pk_field)
 

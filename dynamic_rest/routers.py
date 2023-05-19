@@ -204,7 +204,7 @@ class DynamicRouter(DefaultRouter):
         if namespace:
             namespace = namespace.rstrip('/') + '/'
         base_path = namespace or ''
-        base_path = r'%s' % base_path + path_name
+        base_path = f'{base_path}{path_name}'
         self.register(base_path, viewset)
 
         # Make sure resource isn't already registered.
@@ -259,10 +259,7 @@ class DynamicRouter(DefaultRouter):
             return None
 
         base_path = get_script_prefix() + resource_map[resource_key]['path']
-        if pk:
-            return '%s/%s/' % (base_path, pk)
-        else:
-            return base_path
+        return f'{base_path}/{pk}/' if pk else base_path
 
     @staticmethod
     def get_canonical_serializer(
@@ -334,13 +331,9 @@ class DynamicRouter(DefaultRouter):
         fields = getattr(serializer, 'get_link_fields', lambda: [])()
 
         route_name = '{basename}-{methodnamehyphen}'
-        if drf_version >= (3, 8, 0):
-            route_compat_kwargs = {'detail': False}
-        else:
-            route_compat_kwargs = {}
-
+        route_compat_kwargs = {'detail': False} if drf_version >= (3, 8, 0) else {}
+        methodname = 'list_related'
         for field_name, field in six.iteritems(fields):
-            methodname = 'list_related'
             url = (
                 r'^{prefix}/{lookup}/(?P<field_name>%s)'
                 '{trailing_slash}$' % field_name

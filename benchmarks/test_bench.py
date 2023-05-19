@@ -231,15 +231,10 @@ class BenchmarkTest(APITestCase):
 
 def generate_benchmark(name, title, drest, drf, size, sample):
     def bench(self):
-        total_size = getattr(self, 'generate_%s' % name)(size)
-        self.bench(
-            'DREST %s' % DREST_VERSION,
-            title,
-            drest,
-            total_size,
-            sample
-        )
-        self.bench('DRF %s' % DRF_VERSION, title, drf, total_size, sample)
+        total_size = getattr(self, f'generate_{name}')(size)
+        self.bench(f'DREST {DREST_VERSION}', title, drest, total_size, sample)
+        self.bench(f'DRF {DRF_VERSION}', title, drf, total_size, sample)
+
     return bench
 
 

@@ -119,20 +119,16 @@ class Settings(object):
             mod = __import__(module_path, fromlist=[class_name])
             return getattr(mod, class_name)
         elif val:
-            raise Exception("%s must be string or a class" % attr)
+            raise Exception(f"{attr} must be string or a class")
 
     def __getattr__(self, attr):
         """Get a setting."""
         if attr not in self._cache:
 
             if attr not in self.keys:
-                raise AttributeError("Invalid API setting: '%s'" % attr)
+                raise AttributeError(f"Invalid API setting: '{attr}'")
 
-            if attr in self.settings:
-                val = self.settings[attr]
-            else:
-                val = self.defaults[attr]
-
+            val = self.settings[attr] if attr in self.settings else self.defaults[attr]
             if attr in self.class_attrs and val:
                 val = self._load_class(attr, val)
 

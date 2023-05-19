@@ -35,8 +35,7 @@ def merge_link_object(serializer, data, instance):
                     serializer.get_resource_key(),
                     instance.pk
                 ) or ''
-            link = '%s%s/' % (base_url, name)
-        # Default to DREST-generated relation endpoints.
+            link = f'{base_url}{name}/'
         elif callable(link):
             link = link(name, field, data, instance)
 

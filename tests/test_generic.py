@@ -41,11 +41,7 @@ class TestGenericRelationFieldAPI(APITestCase):
         response = self.client.get(url)
         self.assertEqual(200, response.status_code)
         content = json.loads(response.content.decode('utf-8'))
-        self.assertTrue(
-            all(
-                [_['favorite_pet'] for _ in content['users']]
-            )
-        )
+        self.assertTrue(all(_['favorite_pet'] for _ in content['users']))
         self.assertFalse('cats' in content)
         self.assertFalse('dogs' in content)
         self.assertTrue('type' in content['users'][0]['favorite_pet'])
@@ -59,11 +55,7 @@ class TestGenericRelationFieldAPI(APITestCase):
         response = self.client.get(url)
         self.assertEqual(200, response.status_code)
         content = json.loads(response.content.decode('utf-8'))
-        self.assertTrue(
-            all(
-                [_['favorite_pet'] for _ in content['users']]
-            )
-        )
+        self.assertTrue(all(_['favorite_pet'] for _ in content['users']))
         self.assertTrue('cats' in content)
         self.assertEqual(2, len(content['cats']))
         self.assertTrue('dogs' in content)
@@ -124,7 +116,7 @@ class TestGenericRelationFieldAPI(APITestCase):
 
         self.assertIsNone(DynamicRouter.get_canonical_serializer(Zebra))
 
-        url = '/users/%s/?include[]=favorite_pet' % user.pk
+        url = f'/users/{user.pk}/?include[]=favorite_pet'
         response = self.client.get(url)
         self.assertEqual(200, response.status_code)
         content = json.loads(response.content.decode('utf-8'))
@@ -154,7 +146,7 @@ class TestGenericRelationFieldAPI(APITestCase):
         """
         user = self.fixture.users[0]
 
-        url = '/users/%s/?include[]=favorite_pet.' % user.pk
+        url = f'/users/{user.pk}/?include[]=favorite_pet.'
         response = self.client.patch(
             url,
             json.dumps({
@@ -174,6 +166,7 @@ class TestGenericRelationFieldAPI(APITestCase):
         self.assertEqual(1, content['dogs'][0]['id'])
 
     def test_non_deferred_generic_field(self):
+
         class FooUserSerializer(UserSerializer):
 
             class Meta:
@@ -194,7 +187,4 @@ class TestGenericRelationFieldAPI(APITestCase):
         self.assertIsNotNone(data)
         self.assertTrue('favorite_pet' in data)
         self.assertTrue(isinstance(data['favorite_pet'], dict))
-        self.assertEqual(
-            set(['id', 'type']),
-            set(data['favorite_pet'].keys())
-        )
+        self.assertEqual({'id', 'type'}, set(data['favorite_pet'].keys()))

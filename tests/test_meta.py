@@ -28,12 +28,7 @@ class TestMeta(TestCase):
             self.assertEqual(
                 expected,
                 remote_model,
-                "For %s.%s expected %s got %s" % (
-                    model,
-                    field_name,
-                    expected,
-                    remote_model
-                )
+                f"For {model}.{field_name} expected {expected} got {remote_model}",
             )
 
     def test_model_field_and_type(self):
@@ -53,12 +48,7 @@ class TestMeta(TestCase):
             self.assertEqual(
                 expected,
                 typestr,
-                "%s.%s should be '%s', got '%s'" % (
-                    model,
-                    field_name,
-                    expected,
-                    typestr,
-                )
+                f"{model}.{field_name} should be '{expected}', got '{typestr}'",
             )
 
     def test_reverse_m2m_field_name(self):

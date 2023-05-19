@@ -68,7 +68,7 @@ class DynamicComputedField(DynamicField):
 class DynamicMethodField(SerializerMethodField, DynamicField):
     def reset(self):
         super(DynamicMethodField, self).reset()
-        if self.method_name == 'get_' + self.field_name:
+        if self.method_name == f'get_{self.field_name}':
             self.method_name = None
 
 
@@ -172,12 +172,11 @@ class DynamicRelationField(WithRelationalFieldMixin, DynamicField):
         seen = set()
         while True:
             seen.add(node)
-            if getattr(node, 'parent', None):
-                node = node.parent
-                if node in seen:
-                    return None
-            else:
+            if not getattr(node, 'parent', None):
                 return node
+            node = node.parent
+            if node in seen:
+                return None
 
     def _get_cached_serializer(self, args, init_args):
         enabled = settings.ENABLE_SERIALIZER_CACHE
@@ -250,7 +249,7 @@ class DynamicRelationField(WithRelationalFieldMixin, DynamicField):
         }
 
         kwargs = self._inherit_parent_kwargs(kwargs)
-        init_args.update(kwargs)
+        init_args |= kwargs
 
         if self.embed and self._is_dynamic:
             init_args['embed'] = True
@@ -296,7 +295,7 @@ class DynamicRelationField(WithRelationalFieldMixin, DynamicField):
         if not self.kwargs['many'] and serializer.id_only():
             # attempt to optimize by reading the related ID directly
             # from the current instance rather than from the related object
-            source_id = '%s_id' % source
+            source_id = f'{source}_id'
             # try the faster way first:
             if hasattr(instance, source_id):
                 return getattr(instance, source_id)
@@ -313,10 +312,7 @@ class DynamicRelationField(WithRelationalFieldMixin, DynamicField):
         if model is None:
             instance = getattr(instance, source)
 
-        if instance is None:
-            return None
-
-        return serializer.to_representation(instance)
+        return None if instance is None else serializer.to_representation(instance)
 
     def to_internal_value_single(self, data, serializer):
         """Return the underlying object, given the serialized form."""
@@ -327,17 +323,16 @@ class DynamicRelationField(WithRelationalFieldMixin, DynamicField):
             instance = related_model.objects.get(pk=data)
         except related_model.DoesNotExist:
             raise ValidationError(
-                "Invalid value for '%s': %s object with ID=%s not found" %
-                (self.field_name, related_model.__name__, data)
+                f"Invalid value for '{self.field_name}': {related_model.__name__} object with ID={data} not found"
             )
         return instance
 
     def to_internal_value(self, data):
         """Return the underlying object(s), given the serialized form."""
         if self.kwargs['many']:
-            serializer = self.serializer.child
             if not isinstance(data, list):
-                raise ParseError("'%s' value must be a list" % self.field_name)
+                raise ParseError(f"'{self.field_name}' value must be a list")
+            serializer = self.serializer.child
             return [
                 self.to_internal_value_single(
                     instance,
@@ -361,8 +356,8 @@ class DynamicRelationField(WithRelationalFieldMixin, DynamicField):
         if not module_path:
             if getattr(self, 'parent', None) is None:
                 raise Exception(
-                    "Can not load serializer '%s'" % serializer_class +
-                    ' before binding or without specifying full path')
+                    f"Can not load serializer '{serializer_class}' before binding or without specifying full path"
+                )
 
             # try the module of the parent class
             module_path = self.parent.__module__
@@ -411,9 +406,7 @@ class CountField(DynamicComputedField):
         # since this is a "count" field, we'll limit to list, set, tuple.
         if not isinstance(data, (list, set, tuple)):
             raise TypeError(
-                "'%s' is %s. Must be list, set or tuple to be countable." % (
-                    source, type(data)
-                )
+                f"'{source}' is {type(data)}. Must be list, set or tuple to be countable."
             )
 
         if self.unique:

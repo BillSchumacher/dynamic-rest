@@ -12,8 +12,8 @@ def get_context(version, name, model, plural_name):
     model = model or name
     model_class_name = inflection.camelize(model)
     class_name = inflection.camelize(name)
-    serializer_class_name = class_name + 'Serializer'
-    viewset_class_name = class_name + 'ViewSet'
+    serializer_class_name = f'{class_name}Serializer'
+    viewset_class_name = f'{class_name}ViewSet'
     plural_name = plural_name or inflection.pluralize(name)
     return {
         'version': version,

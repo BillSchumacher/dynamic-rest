@@ -97,7 +97,7 @@ class SideloadingProcessor(object):
             if dynamic or returned:
                 # recursively check all fields
                 for key, o in six.iteritems(obj):
-                    if isinstance(o, list) or isinstance(o, dict):
+                    if isinstance(o, (list, dict)):
                         # lists or dicts indicate a relation
                         self.process(
                             o,
@@ -136,10 +136,7 @@ class SideloadingProcessor(object):
 
                 # if the primary resource is embedded, add it to a prefixed key
                 if name == self.plural_name:
-                    name = '%s%s' % (
-                        settings.ADDITIONAL_PRIMARY_RESOURCE_PREFIX,
-                        name
-                    )
+                    name = f'{settings.ADDITIONAL_PRIMARY_RESOURCE_PREFIX}{name}'
 
                 if not seen:
                     # allocate a top-level key in the data for this resource

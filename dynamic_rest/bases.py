@@ -90,15 +90,14 @@ class GetModelMixin(object):
 
             if hasattr(self.parent, custom_fn_name):
                 return getattr(self.parent, custom_fn_name)()
-            else:
-                try:
-                    return self.parent.Meta.model
-                except AttributeError:
-                    raise AssertionError(
-                        'No "model" value passed to field "{0}"'.format(
-                            type(self).__name__
-                        )
+            try:
+                return self.parent.Meta.model
+            except AttributeError:
+                raise AssertionError(
+                    'No "model" value passed to field "{0}"'.format(
+                        type(self).__name__
                     )
+                )
         elif isinstance(self.model, str):
             return model_from_definition(self.model)
         else:

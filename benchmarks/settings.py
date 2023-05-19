@@ -5,7 +5,7 @@ BASE_DIR = os.path.dirname(__file__)
 SECRET_KEY = 'test'
 INSTALL_DIR = '/usr/local/altschool/dynamic-rest/'
 STATIC_URL = '/static/'
-STATIC_ROOT = INSTALL_DIR + 'www/static'
+STATIC_ROOT = f'{INSTALL_DIR}www/static'
 
 DEBUG = True
 USE_TZ = False

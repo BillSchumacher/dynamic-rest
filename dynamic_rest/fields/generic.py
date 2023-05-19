@@ -33,20 +33,14 @@ class DynamicGenericRelationField(
         #       id fields, but that seems to conflict with some internal
         #       Django magic. Disabling `.only()` by requiring '*' seem
         #       to work more reliably...
-        self.requires = [
-            source + '.*',
-            '*'
-        ]
+        self.requires = [f'{source}.*', '*']
 
         # Get request fields to support sideloading, but disallow field
         # inclusion/exclusion.
         request_fields = self._get_request_fields_from_parent()
         if isinstance(request_fields, dict) and len(request_fields):
             raise ValidationError(
-                "%s.%s does not support field inclusion/exclusion" % (
-                    self.parent.get_name(),
-                    self.field_name
-                )
+                f"{self.parent.get_name()}.{self.field_name} does not support field inclusion/exclusion"
             )
         self.request_fields = request_fields
 
@@ -118,11 +112,9 @@ class DynamicGenericRelationField(
         model_name = data.get('type', None)
         model_id = data.get('id', None)
         if model_name and model_id:
-            serializer_class = DynamicRouter.get_canonical_serializer(
-                resource_key=None,
-                resource_name=model_name
-            )
-            if serializer_class:
+            if serializer_class := DynamicRouter.get_canonical_serializer(
+                resource_key=None, resource_name=model_name
+            ):
                 model = serializer_class.get_model()
                 return model.objects.get(id=model_id) if model else None
 

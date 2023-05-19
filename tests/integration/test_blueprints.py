@@ -35,7 +35,7 @@ class DJBlueprintsTestCase(TestCase):
         # add this project as a dependency
         # this file is ROOT/tests/integration/test_blueprints.py
         root = os.path.abspath(os.path.join(__file__, '../../..'))
-        application.execute('add %s --dev --not-interactive' % root)
+        application.execute(f'add {root} --dev --not-interactive')
         # generate an API endpoint for the generated model
         application.execute('generate api v0 foo --not-interactive')
         # start the server

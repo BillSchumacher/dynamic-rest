@@ -61,16 +61,13 @@ def get_model_field(model, field_name):
         }
         if field_name in related_objects:
             return related_objects[field_name]
-        else:
-            # check virtual fields (1.7)
-            if hasattr(meta, 'virtual_fields'):
-                for field in meta.virtual_fields:
-                    if field.name == field_name:
-                        return field
+        # check virtual fields (1.7)
+        if hasattr(meta, 'virtual_fields'):
+            for field in meta.virtual_fields:
+                if field.name == field_name:
+                    return field
 
-            raise AttributeError(
-                '%s is not a valid field for %s' % (field_name, model)
-            )
+        raise AttributeError(f'{field_name} is not a valid field for {model}')
 
 
 def get_model_field_and_type(model, field_name):

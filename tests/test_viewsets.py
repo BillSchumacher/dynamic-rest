@@ -149,7 +149,7 @@ class TestMergeDictConvertsToDict(TestCase):
         except NotImplementedError as e:
             message = '{0}'.format(e)
             if 'request.FILES' not in message:
-                self.fail('Unexpected error: %s' % message)
+                self.fail(f'Unexpected error: {message}')
             # otherwise, this is a known DRF 3.2 bug
 
 
@@ -172,7 +172,7 @@ class BulkUpdateTestCase(TestCase):
         self.assertTrue('dogs' in response.data)
         self.assertTrue(2, len(response.data['dogs']))
         self.assertTrue(
-            all([Dog.objects.get(id=pk).fur_color == 'grey' for pk in (1, 2)])
+            all(Dog.objects.get(id=pk).fur_color == 'grey' for pk in (1, 2))
         )
 
     def test_bulk_update_drest_style(self):
@@ -359,10 +359,7 @@ class BulkCreationTestCase(TestCase):
         resp_data = response.data
 
         # Check top-level keys
-        self.assertEqual(
-            set(['users', 'groups']),
-            set(resp_data.keys())
-        )
+        self.assertEqual({'users', 'groups'}, set(resp_data.keys()))
 
         # Should be 2 of each
         self.assertEqual(2, len(resp_data['users']))
@@ -403,9 +400,7 @@ class BulkDeletionTestCase(TestCase):
         )
 
     def test_bulk_delete_single(self):
-        response = self.client.delete(
-            '/dogs/%s' % self.ids_to_delete[0],
-        )
+        response = self.client.delete(f'/dogs/{self.ids_to_delete[0]}')
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
 
     def test_bulk_delete_invalid_single(self):

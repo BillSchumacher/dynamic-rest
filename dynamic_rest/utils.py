@@ -28,8 +28,7 @@ def unpack(content):
         return content
 
     keys = [k for k in content.keys() if k != 'meta']
-    unpacked = content[keys[0]]
-    return unpacked
+    return content[keys[0]]
 
 
 def external_id_from_model_and_internal_id(model, internal_id):

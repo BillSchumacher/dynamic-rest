@@ -293,10 +293,7 @@ class TestUsersAPI(APITestCase):
             response.status_code,
             response.content.decode('utf-8'))
         data = json.loads(response.content.decode('utf-8'))
-        self.assertEqual(
-            set(['id']),
-            set(data['users'][0].keys())
-        )
+        self.assertEqual({'id'}, set(data['users'][0].keys()))
 
     def test_get_with_exclude_all_and_include_relationship(self):
         with self.assertNumQueries(2):
@@ -307,10 +304,7 @@ class TestUsersAPI(APITestCase):
             response.status_code,
             response.content.decode('utf-8'))
         data = json.loads(response.content.decode('utf-8'))
-        self.assertEqual(
-            set(['groups']),
-            set(data['users'][0].keys())
-        )
+        self.assertEqual({'groups'}, set(data['users'][0].keys()))
         self.assertTrue('groups' in data)
 
     def test_get_one_with_include(self):
@@ -530,7 +524,7 @@ class TestUsersAPI(APITestCase):
 
     def test_get_with_include_invalid(self):
         for bad_data in ('name..', 'groups..name', 'foo', 'groups.foo'):
-            response = self.client.get('/users/?include[]=%s' % bad_data)
+            response = self.client.get(f'/users/?include[]={bad_data}')
             self.assertEqual(400, response.status_code)
 
     def test_post(self):
@@ -570,9 +564,10 @@ class TestUsersAPI(APITestCase):
             'name': 'updated'
         }
         response = self.client.put(
-            '/groups/%s/' % group.pk,
+            f'/groups/{group.pk}/',
             json.dumps(data),
-            content_type='application/json')
+            content_type='application/json',
+        )
         self.assertEqual(200, response.status_code)
         updated_group = Group.objects.get(pk=group.pk)
         self.assertEqual(updated_group.name, data['name'])
@@ -932,17 +927,12 @@ class TestUsersAPI(APITestCase):
                 )
                 data = self._get_json(url)
 
-                expected = set([expected_value])
-                actual = set([o['is_dead'] for o in data['users']])
+                expected = {expected_value}
+                actual = {o['is_dead'] for o in data['users']}
                 self.assertEqual(
                     expected,
                     actual,
-                    "Boolean filter '%s' failed. Expected=%s Actual=%s" % (
-                        test_value,
-                        expected,
-                        actual,
-                    )
-
+                    f"Boolean filter '{test_value}' failed. Expected={expected} Actual={actual}",
                 )
 
     def test_sort_relation_field(self):
@@ -1294,7 +1284,7 @@ class TestLinks(APITestCase):
         cat1 = Cat.objects.get(pk=1)
         self.assertEqual(
             cat['links']['backup_home'],
-            '/locations/%s/?include[]=address' % cat1.backup_home.pk
+            f'/locations/{cat1.backup_home.pk}/?include[]=address',
         )
 
     @override_settings(
@@ -1325,7 +1315,7 @@ class TestLinks(APITestCase):
         self.assertFalse('foobar' in cat['links'])
 
     def test_including_non_empty_many_relation_has_link(self):
-        r = self.client.get('/v2/cats/%s/?include[]=foobar' % self.cat.pk)
+        r = self.client.get(f'/v2/cats/{self.cat.pk}/?include[]=foobar')
         self.assertEqual(200, r.status_code)
         content = json.loads(r.content.decode('utf-8'))
         cat = content['cat']
@@ -1333,7 +1323,7 @@ class TestLinks(APITestCase):
         self.assertTrue('foobar' in cat['links'])
 
     def test_no_links_for_included_single_relations(self):
-        url = '/v2/cats/%s/?include[]=home' % self.cat.pk
+        url = f'/v2/cats/{self.cat.pk}/?include[]=home'
         r = self.client.get(url)
         self.assertEqual(200, r.status_code)
         content = json.loads(r.content.decode('utf-8'))
@@ -1343,7 +1333,7 @@ class TestLinks(APITestCase):
         self.assertFalse('home' in cat['links'])
 
     def test_sideloading_relation_hides_link(self):
-        url = '/v2/cats/%s/?include[]=foobar.' % self.cat.pk
+        url = f'/v2/cats/{self.cat.pk}/?include[]=foobar.'
         r = self.client.get(url)
         self.assertEqual(200, r.status_code)
         content = json.loads(r.content.decode('utf-8'))
@@ -1356,7 +1346,7 @@ class TestLinks(APITestCase):
     def test_one_to_one_dne(self):
         user = User.objects.create(name='foo', last_name='bar')
 
-        url = '/users/%s/profile/' % user.pk
+        url = f'/users/{user.pk}/profile/'
         r = self.client.get(url)
         self.assertEqual(200, r.status_code)
         # Check error message to differentiate from a routing error 404
@@ -1420,7 +1410,7 @@ class TestLinks(APITestCase):
         self.assertIs(fields['users'].deferred, False)
         self.assertIs(fields['groups'].deferred, None)
 
-        url = '/permissions/%s/' % perm.pk
+        url = f'/permissions/{perm.pk}/'
         r = self.client.get(url)
         data = json.loads(r.content.decode('utf-8'))
         self.assertFalse('groups' in data['permission'])
@@ -1827,9 +1817,9 @@ class TestCatsAPI(APITestCase):
             'name': 'Renamed Kitten',
         }
         response = self.client.patch(
-            '/cats/%s/' % data['cat']['id'],
+            f"/cats/{data['cat']['id']}/",
             json.dumps(patch_data),
-            content_type='application/json'
+            content_type='application/json',
         )
         self.assertEqual(200, response.status_code)
         data = json.loads(response.content.decode('utf-8'))
