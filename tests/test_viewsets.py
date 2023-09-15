@@ -175,7 +175,7 @@ class BulkUpdateTestCase(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue("dogs" in response.data)
-        self.assertTrue(2 == len(response.data["dogs"]))
+        self.assertTrue(len(response.data["dogs"]) == 2)
         self.assertTrue(
             all(Dog.objects.get(id=pk).fur_color == "grey" for pk in (1, 2))
         )
@@ -346,7 +346,7 @@ class BulkCreationTestCase(TestCase):
         resp_data = response.data
 
         # Check top-level keys
-        self.assertEqual(set(["users", "groups"]), set(resp_data.keys()))
+        self.assertEqual({"users", "groups"}, set(resp_data.keys()))
 
         # Should be 2 of each
         self.assertEqual(2, len(resp_data["users"]))

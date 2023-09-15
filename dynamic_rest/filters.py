@@ -57,10 +57,7 @@ def has_joins(queryset):
     If this is the case, it is possible for the queryset
     to return duplicate results.
     """
-    for join in queryset.query.alias_map.values():
-        if join.join_type:
-            return True
-    return False
+    return any(join.join_type for join in queryset.query.alias_map.values())
 
 
 class FilterNode(object):
@@ -92,10 +89,7 @@ class FilterNode(object):
     @property
     def key(self):
         """Key property."""
-        return (
-            f"{'__'.join(self.field)}"
-            f"{'__' + self.operator if self.operator else ''}"
-        )
+        return f"{'__'.join(self.field)}{f'__{self.operator}' if self.operator else ''}"
 
     def generate_query_key(self, serializer):
         """Get the key that can be passed to Django's filter method.
@@ -371,11 +365,13 @@ class DynamicFilterBackend(BaseFilterBackend):
             if q is None:
                 q = Q()
             if ors:
-                result = reduce(
+                return reduce(
                     _or,
-                    [self._filters_to_query({"_complex": f}, serializer) for f in ors],
+                    [
+                        self._filters_to_query({"_complex": f}, serializer)
+                        for f in ors
+                    ],
                 )
-                return result
             if ands:
                 return reduce(
                     _and,
@@ -553,11 +549,7 @@ class DynamicFilterBackend(BaseFilterBackend):
 
         self._get_implicit_requirements(fields, requirements)
 
-        # Implicit requirements (i.e. via `requires`) can potentially
-        # include fields that haven't been explicitly included.
-        # Such fields would not be in `fields`, so they need to be added.
-        implicitly_included = set(requirements.keys()) - set(fields.keys())
-        if implicitly_included:
+        if implicitly_included := set(requirements.keys()) - set(fields.keys()):
             all_fields = serializer.get_all_fields()
             fields.update(
                 {
@@ -684,8 +676,7 @@ class DynamicSortingFilter(OrderingFilter):
         """
         self.ordering_param = view.SORT
 
-        ordering = self.get_ordering(request, queryset, view)
-        if ordering:
+        if ordering := self.get_ordering(request, queryset, view):
             queryset = queryset.order_by(*ordering)
             if any("__" in o for o in ordering):
                 # add distinct() to remove duplicates
@@ -699,8 +690,7 @@ class DynamicSortingFilter(OrderingFilter):
         DRF expects a comma separated list, while DREST expects an array.
         This method overwrites the DRF default, so it can parse the array.
         """
-        params = view.get_request_feature(view.SORT)
-        if params:
+        if params := view.get_request_feature(view.SORT):
             fields = [param.strip() for param in params]
             valid_ordering, invalid_ordering = self.remove_invalid_fields(
                 queryset, fields, view
@@ -731,9 +721,7 @@ class DynamicSortingFilter(OrderingFilter):
             stripped_term = term.lstrip("-")
             # add back the '-' add the end if necessary
             reverse_sort_term = "" if len(stripped_term) is len(term) else "-"
-            ordering = self.ordering_for(stripped_term, view)
-
-            if ordering:
+            if ordering := self.ordering_for(stripped_term, view):
                 valid_orderings.append(reverse_sort_term + ordering)
             else:
                 invalid_orderings.append(term)

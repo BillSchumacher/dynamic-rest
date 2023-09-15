@@ -16,9 +16,7 @@ FALSEY_STRINGS = (
 @lru_cache()
 def is_truthy(x):
     """Return True if x is truthy, False otherwise."""
-    if isinstance(x, str):
-        return x.lower() not in FALSEY_STRINGS
-    return bool(x)
+    return x.lower() not in FALSEY_STRINGS if isinstance(x, str) else bool(x)
 
 
 def unpack(content):
@@ -28,8 +26,7 @@ def unpack(content):
         return content
 
     keys = [k for k in content.keys() if k != "meta"]
-    unpacked = content[keys[0]]
-    return unpacked
+    return content[keys[0]]
 
 
 def external_id_from_model_and_internal_id(model, internal_id):

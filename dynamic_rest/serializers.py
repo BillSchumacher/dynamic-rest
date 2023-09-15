@@ -39,8 +39,7 @@ class WithResourceKeyMixin(object):
 
     def get_resource_key(self):
         """Return canonical resource key, usually the DB table name."""
-        model = self.get_model()
-        if model:
+        if model := self.get_model():
             return get_model_table(model)
         return self.get_name()
 
@@ -285,11 +284,10 @@ class WithDynamicSerializerMixin(
         ):
             exclude_fields = "*"
 
-        only_fields = set(only_fields or [])
         include_fields = include_fields or []
         exclude_fields = exclude_fields or []
 
-        if only_fields:
+        if only_fields := set(only_fields or []):
             exclude_fields = "*"
             include_fields = only_fields
 
@@ -429,10 +427,8 @@ class WithDynamicSerializerMixin(
     def flag_fields(self, all_fields, fields_to_flag, attr, value):
         """Flag fields."""
         for name in fields_to_flag:
-            field = all_fields.get(name)
-            if not field:
-                continue
-            setattr(field, attr, value)
+            if field := all_fields.get(name):
+                setattr(field, attr, value)
 
     def get_fields(self):
         """Returns the serializer's field set.
@@ -510,25 +506,24 @@ class WithDynamicSerializerMixin(
         query_params = self.get_request_attribute("query_params", {})
         if "exclude_links" in query_params:
             return {}
-        else:
-            all_fields = self.get_all_fields()
-            return {
-                name: field
-                for name, field in all_fields.items()
-                if isinstance(field, DynamicRelationField)
-                and getattr(field, "link", True)
-                and not (
-                    # Skip sideloaded fields
-                    name in self.fields
-                    and self.is_field_sideloaded(name)
-                )
-                and not (
-                    # Skip included single relations
-                    # TODO: Use links, when we can generate canonical URLs
-                    name in self.fields
-                    and not getattr(field, "many", False)
-                )
-            }
+        all_fields = self.get_all_fields()
+        return {
+            name: field
+            for name, field in all_fields.items()
+            if isinstance(field, DynamicRelationField)
+            and getattr(field, "link", True)
+            and not (
+                # Skip sideloaded fields
+                name in self.fields
+                and self.is_field_sideloaded(name)
+            )
+            and not (
+                # Skip included single relations
+                # TODO: Use links, when we can generate canonical URLs
+                name in self.fields
+                and not getattr(field, "many", False)
+            )
+        }
 
     @cached_property
     def _readable_fields(self):
@@ -559,10 +554,7 @@ class WithDynamicSerializerMixin(
         Returns:
             Boolean.
         """
-        if hasattr(self.Meta, "hash_ids"):
-            return self.Meta.hash_ids
-        else:
-            return False
+        return self.Meta.hash_ids if hasattr(self.Meta, "hash_ids") else False
 
     def _faster_to_representation(self, instance):
         """Modified to_representation with optimizations.
@@ -761,10 +753,11 @@ class WithDynamicModelSerializerMixin(WithDynamicSerializerMixin):
         # we will just pull all ID fields.
         # TODO: We also might need to return all non-nullable fields,
         #    or else it is possible Django will issue another request.
-        for field in model._meta.fields:  # pylint: disable=protected-access
-            if isinstance(field, models.ForeignKey):
-                out.append(f"{field.name }_id")
-
+        out.extend(
+            f"{field.name}_id"
+            for field in model._meta.fields
+            if isinstance(field, models.ForeignKey)
+        )
         return out
 
 

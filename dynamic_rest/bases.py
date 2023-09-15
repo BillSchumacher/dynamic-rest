@@ -99,20 +99,15 @@ class GetModelMixin(object):
         """
         model = self.model
         if model is None:
-            if model is None:
-                custom_fn_name = f"get_{self.field_name}_model"
-                parent = self.parent
-                if hasattr(parent, custom_fn_name):
-                    self.model = getattr(parent, custom_fn_name)()
-                else:
-                    try:
-                        self.model = parent.Meta.model
-                    except AttributeError as exc:
-                        raise AssertionError(
-                            f'No "model" value passed to field "{type(self).__name__}"'
-                        ) from exc
-            elif isinstance(model, str):
-                self.model = model_from_definition(model)
+            custom_fn_name = f"get_{self.field_name}_model"
+            parent = self.parent
+            if hasattr(parent, custom_fn_name):
+                self.model = getattr(parent, custom_fn_name)()
             else:
-                self.model = model
+                try:
+                    self.model = parent.Meta.model
+                except AttributeError as exc:
+                    raise AssertionError(
+                        f'No "model" value passed to field "{type(self).__name__}"'
+                    ) from exc
         return self.model

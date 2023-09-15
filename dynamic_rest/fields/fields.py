@@ -167,12 +167,11 @@ class DynamicRelationField(WithRelationalFieldMixin, DynamicField):
         seen = set()
         while True:
             seen.add(node)
-            if parent_node := getattr(node, "parent", None):
-                node = parent_node
-                if node in seen:
-                    return None
-            else:
+            if not (parent_node := getattr(node, "parent", None)):
                 return node
+            node = parent_node
+            if node in seen:
+                return None
 
     def _get_cached_serializer(self, args, init_args):
         """Get a cached instance of the child serializer."""
@@ -246,7 +245,7 @@ class DynamicRelationField(WithRelationalFieldMixin, DynamicField):
         }
 
         kwargs = self._inherit_parent_kwargs(kwargs)
-        init_args.update(kwargs)
+        init_args |= kwargs
 
         if self.embed and self._is_dynamic:
             init_args["embed"] = True
@@ -282,7 +281,7 @@ class DynamicRelationField(WithRelationalFieldMixin, DynamicField):
         else:
             return instance
 
-    def to_representation(self, instance):  # pylint: disable=arguments-renamed
+    def to_representation(self, instance):    # pylint: disable=arguments-renamed
         """Represent the relationship, either as an ID or object."""
         serializer = self.serializer
         model = serializer.get_model()
@@ -308,10 +307,7 @@ class DynamicRelationField(WithRelationalFieldMixin, DynamicField):
         if model is None:
             instance = getattr(instance, source)
 
-        if instance is None:
-            return None
-
-        return serializer.to_representation(instance)
+        return None if instance is None else serializer.to_representation(instance)
 
     def to_internal_value_single(self, data, serializer):
         """Return the underlying object, given the serialized form."""
@@ -332,9 +328,9 @@ class DynamicRelationField(WithRelationalFieldMixin, DynamicField):
     def to_internal_value(self, data):
         """Return the underlying object(s), given the serialized form."""
         if self.kwargs["many"]:
-            serializer = self.serializer.child
             if not isinstance(data, list):
                 raise ParseError(f"'{self.field_name}' value must be a list")
+            serializer = self.serializer.child
             return [
                 self.to_internal_value_single(instance, serializer) for instance in data
             ]

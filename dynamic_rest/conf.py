@@ -112,11 +112,7 @@ class Settings(object):
             if attr not in self.keys:
                 raise AttributeError(f"Invalid API setting: '{attr}'")
 
-            if attr in self.settings:
-                val = self.settings[attr]
-            else:
-                val = self.defaults[attr]
-
+            val = self.settings[attr] if attr in self.settings else self.defaults[attr]
             if attr in self.class_attrs and val:
                 val = self._load_class(attr, val)
 

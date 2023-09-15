@@ -202,21 +202,20 @@ class WithDynamicViewSetMixin(object):
                 else:
                     continue
 
-            if param_name.startswith(prefix):
-                if param_name.endswith("}"):
-                    param_name = param_name[offset:-1]
-                elif param_name.endswith("}[]"):
-                    # strip off trailing []
-                    # this fixes an Ember queryparams issue
-                    param_name = param_name[offset:-3]
-                else:
-                    # malformed argument like:
-                    # filter{foo=bar
-                    raise exceptions.ParseError(
-                        f'"{param_name}" is not a well-formed filter key.'
-                    )
-            else:
+            if not param_name.startswith(prefix):
                 continue
+            if param_name.endswith("}"):
+                param_name = param_name[offset:-1]
+            elif param_name.endswith("}[]"):
+                # strip off trailing []
+                # this fixes an Ember queryparams issue
+                param_name = param_name[offset:-3]
+            else:
+                # malformed argument like:
+                # filter{foo=bar
+                raise exceptions.ParseError(
+                    f'"{param_name}" is not a well-formed filter key.'
+                )
             params_map[param_name] = value
 
         return params_map if not raw else None
@@ -359,7 +358,7 @@ class WithDynamicViewSetMixin(object):
 
         # Prefix include/exclude filters with field_name, so it's scoped to
         # the parent object.
-        field_prefix = field_name + "."
+        field_prefix = f"{field_name}."
         self._prefix_inex_params(request, self.INCLUDE, field_prefix)
         self._prefix_inex_params(request, self.EXCLUDE, field_prefix)
 
@@ -565,8 +564,7 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
             else:
                 # bulk payload update
                 partial = "partial" in kwargs
-                bulk_payload = self._get_bulk_payload(request)
-                if bulk_payload:
+                if bulk_payload := self._get_bulk_payload(request):
                     return self._bulk_update(bulk_payload, partial)
 
         # singular update
@@ -657,8 +655,7 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
             {"name": "Lucky", "age": 3}
         ]
         """
-        bulk_payload = self._get_bulk_payload(request)
-        if bulk_payload:
+        if bulk_payload := self._get_bulk_payload(request):
             return self._create_many(bulk_payload)
         return super().create(request, *args, **kwargs)
 
@@ -689,8 +686,7 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
             {"id": 2}
         ]
         """
-        bulk_payload = self._get_bulk_payload(request)
-        if bulk_payload:
+        if bulk_payload := self._get_bulk_payload(request):
             return self._destroy_many(bulk_payload)
         lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
         if lookup_url_kwarg not in kwargs:

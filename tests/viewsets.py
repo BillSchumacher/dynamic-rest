@@ -127,15 +127,15 @@ class AlternateLocationViewSet(DynamicModelViewSet):
 
     def filter_queryset(self, queryset):
         """Filter queryset."""
-        user_name_separate_filter = self.request.query_params.get("user_name_separate")
-        if user_name_separate_filter:
+        if user_name_separate_filter := self.request.query_params.get(
+            "user_name_separate"
+        ):
             queryset = queryset.filter(user__name=user_name_separate_filter)
         return super().filter_queryset(queryset)
 
     def get_extra_filters(self, request):
         """Get extra filters."""
-        user_name = request.query_params.get("user_name")
-        if user_name:
+        if user_name := request.query_params.get("user_name"):
             return Q(user__name=user_name)
         return None
 
