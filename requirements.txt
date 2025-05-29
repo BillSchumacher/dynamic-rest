@@ -14,7 +14,7 @@ tox-pyenv==1.1.0
 tox==4.11.3
 twine==4.0.2
 inflection==0.5.1
-Django>=3.2,<5.2
+Django>=3.2,<5.3
 djangorestframework>=3.11.2,<3.17
 orjson>=3.9.7
 black==23.9.1
