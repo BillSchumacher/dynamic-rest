@@ -105,6 +105,7 @@ jobs:
         coverage combine
     - name: Upload coverage data to coveralls.io
       run: coveralls --service=github
+      continue-on-error: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         COVERALLS_FLAG_NAME: ${{ join(matrix.*, '-') }}
@@ -119,5 +120,6 @@ jobs:
       run: |
         pip3 install --upgrade coveralls
         coveralls --service=github --finish
+      continue-on-error: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
