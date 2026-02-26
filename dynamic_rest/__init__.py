@@ -9,5 +9,5 @@ DREST offers the following features on top of the standard DRF kit:
 - Optimizations
 """
 
-__version__ = "2.5.3"
+__version__ = "2.5.4"
 default_app_config = "dynamic_rest.apps.DynamicRestConfig"
