@@ -1,10 +1,15 @@
 """Utilities for dynamic_rest."""
+import logging
 from functools import lru_cache
 
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.utils.module_loading import import_string
 from sqids import Sqids
+
+from dynamic_rest.conf import settings
+
+logger = logging.getLogger(__name__)
 
 FALSEY_STRINGS = (
     "0",
@@ -28,19 +33,21 @@ def unpack(content):
         return content
 
     keys = [k for k in content.keys() if k != "meta"]
+    if not keys:
+        return content
     unpacked = content[keys[0]]
     return unpacked
 
 
+@lru_cache(maxsize=1)
+def _get_sqids():
+    """Return a cached Sqids instance."""
+    return Sqids()
+
+
 def external_id_from_model_and_internal_id(model, internal_id):
     """Return a hash for the model and internal ID combination."""
-    sqids = Sqids()
-
-    if sqids is None:
-        raise AssertionError(
-            "To use hashids features you must set "
-            "ENABLE_HASHID_FIELDS to true in your dynamic_rest settings."
-        )
+    sqids = _get_sqids()
     return sqids.encode([ContentType.objects.get_for_model(model).id, internal_id])
 
 
@@ -51,13 +58,7 @@ def internal_id_from_model_and_external_id(model, external_id):
     internal ID, we validate here that the external ID decodes as expected,
     and that the content type corresponds to the model we're expecting.
     """
-    sqids = Sqids()
-
-    if sqids is None:
-        raise AssertionError(
-            "To use hashids features you must set "
-            "ENABLE_HASHID_FIELDS to true in your dynamic_rest settings."
-        )
+    sqids = _get_sqids()
 
     try:
         (  # pylint: disable=unbalanced-tuple-unpacking
@@ -95,9 +96,7 @@ def model_from_definition(model_definition):
     else:
         model = model_definition
 
-    try:
-        assert issubclass(model, models.Model)
-    except (AssertionError, TypeError) as exc:
-        raise AssertionError(f'"{model_definition}"" is not a Django model') from exc
+    if not (isinstance(model, type) and issubclass(model, models.Model)):
+        raise ValueError(f'"{model_definition}" is not a Django model')
 
     return model

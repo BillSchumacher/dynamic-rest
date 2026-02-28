@@ -73,10 +73,10 @@ class UtilsTestCase(TestCase):
         self.assertEqual(model_from_definition("tests.models.User"), User)
         self.assertEqual(model_from_definition(User), User)
         self.assertRaises(
-            AssertionError,
+            ValueError,
             model_from_definition,
             model_definition="django.test.override_settings",
         )
         self.assertRaises(
-            AssertionError, model_from_definition, model_definition=User()
+            ValueError, model_from_definition, model_definition=User()
         )

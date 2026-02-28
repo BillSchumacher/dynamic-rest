@@ -130,7 +130,11 @@ class QueryParams(QueryDict):
         if hasattr(query_params, "urlencode"):
             query_string = query_params.urlencode()
         else:
-            assert isinstance(query_params, (str, bytes))
+            if not isinstance(query_params, (str, bytes)):
+                raise TypeError(
+                    f"query_params must be str or bytes, "
+                    f"got {type(query_params).__name__}"
+                )
             query_string = query_params
         kwargs["mutable"] = True
         super().__init__(query_string, *args, **kwargs)
@@ -431,7 +435,7 @@ class WithDynamicViewSetMixin(
         obj = queryset.first()
 
         if not obj:
-            return Response("Not found", status=404)
+            raise exceptions.NotFound()
 
         # Serialize the related data. Use the field's serializer to ensure
         # it's configured identically to the sideload case. One difference
@@ -516,8 +520,10 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
         try:
             return queryset.update(**data)
         except Exception as e:
+            logger.exception("Failed to bulk-update records via query")
             raise ValidationError(
-                "Failed to bulk-update records:\n" f"{str(e)}\n" f"Data: {str(data)}"
+                "Failed to bulk-update records. "
+                "Check that the provided field values are valid."
             ) from e
 
     def _patch_all_loop(self, queryset, data):
@@ -533,8 +539,10 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
                     updated += 1
                 return updated
         except IntegrityError as e:
+            logger.exception("Failed to update records via loop")
             raise ValidationError(
-                "Failed to update records:\n" f"{str(e)}\n" f"Data: {str(data)}"
+                "Failed to update records. "
+                "The update violates a data integrity constraint."
             ) from e
 
     def _patch_all(self, data, query=False):
@@ -716,8 +724,20 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
 
     def _destroy_many(self, data):
         """Destroy many model instances in bulk."""
+        lookup_field = self.lookup_field or "pk"
+        # Data payload uses "id" by convention; queryset filters use
+        # the model's lookup_field (which may be "pk" or a custom field).
+        data_key = "id"
+        try:
+            ids = [d[data_key] for d in data]
+        except (KeyError, TypeError) as exc:
+            raise ValidationError(
+                f'Each item must contain an "{data_key}" field.'
+            ) from exc
         instances = (
-            self.get_queryset().filter(id__in=[d["id"] for d in data]).distinct()
+            self.get_queryset()
+            .filter(**{f"{lookup_field}__in": ids})
+            .distinct()
         )
         for instance in instances:
             self.check_object_permissions(self.request, instance)

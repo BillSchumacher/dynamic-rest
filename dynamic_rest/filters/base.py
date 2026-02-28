@@ -30,7 +30,6 @@ from dynamic_rest.serializers import DynamicModelSerializer
 from dynamic_rest.utils import is_truthy
 
 logger = logging.getLogger(__name__)
-DEBUG = settings.DEBUG
 
 
 def _get_requested_filters(view, **kwargs) -> TreeMap:
@@ -233,7 +232,7 @@ class DynamicFilterBackend(BaseFilterBackend):
         self._build_implicit_prefetches(model, prefetches, requirements)
         prefetch = prefetches.values()
         queryset = queryset.prefetch_related(*prefetch).distinct()
-        if DEBUG:
+        if settings.DEBUG:
             queryset._using_prefetches = prefetches  # pylint: disable=protected-access
         return queryset
 
@@ -435,11 +434,11 @@ class DynamicFilterBackend(BaseFilterBackend):
                 raise ValidationError(
                     dict(e) if hasattr(e, "error_dict") else list(e)
                 ) from e
-            except Exception as exc:
-                # Some other Django error in parsing the filter.
-                # Very likely a bad query, so throw a ValidationError.
-                err_msg = getattr(exc, "message", "")
-                raise ValidationError(err_msg) from exc
+            except (ValueError, TypeError) as exc:
+                # Bad filter value (e.g. wrong type for field lookup).
+                raise ValidationError(
+                    f"Invalid filter value: {exc}"
+                ) from exc
 
         # A serializer can have this optional function
         # to dynamically apply additional filters on
@@ -459,7 +458,7 @@ class DynamicFilterBackend(BaseFilterBackend):
         if has_joins(queryset) or not is_root_level:
             queryset = queryset.distinct()
 
-        if DEBUG:
+        if settings.DEBUG:
             queryset._using_prefetches = prefetches  # pylint: disable=protected-access
         return queryset
 

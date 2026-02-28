@@ -5,8 +5,8 @@ from functools import lru_cache
 from itertools import chain
 
 from django.core.exceptions import FieldDoesNotExist
-from django.db.models import ManyToOneRel  # tested in 1.9
-from django.db.models import OneToOneRel  # tested in 1.9
+from django.db.models import ManyToOneRel
+from django.db.models import OneToOneRel
 from django.db.models import (
     ForeignKey,
     ManyToManyField,
@@ -51,13 +51,6 @@ def get_model_relationships(meta) -> dict:
     return {o.get_accessor_name(): o for o in chain(related_objs, related_m2m_objs)}
 
 
-@lru_cache()
-def get_virtual_fields(meta) -> dict | None:
-    """Return a dictionary of all virtual fields on a model."""
-    if hasattr(meta, "virtual_fields"):
-        return {f.name: f for f in meta.virtual_fields}
-
-
 def get_model_field(model: Model | None, field_name):
     """Return a field given a model and field name.
 
@@ -77,16 +70,10 @@ def get_model_field(model: Model | None, field_name):
     try:
         return meta.get_field(field_name)
     except FieldDoesNotExist as exc:
-        meta._related_fields_cache = (  # pylint: disable=protected-access
-            cache
-        ) = getattr(meta, "_related_fields_cache", get_model_relationships(meta))
+        cache = get_model_relationships(meta)
 
         if field_name in cache:
             return cache[field_name]
-        # check virtual fields (1.7)
-        if virtual_fields := get_virtual_fields(meta):
-            if field := virtual_fields.get(field_name):
-                return field
 
         raise AttributeError(f"{field_name} is not a valid field for {model}") from exc
 
@@ -95,18 +82,6 @@ def get_model_field_and_type(model, field_name):
     """Return a field and its type given a model and field name."""
     field = get_model_field(model, field_name)
 
-    # Django 1.7 (and 1.8?)
-    if isinstance(field, RelatedObject):
-        if isinstance(field.field, OneToOneField):
-            return field, "o2or"
-        elif isinstance(field.field, ManyToManyField):
-            return field, "m2m"
-        elif isinstance(field.field, ForeignKey):
-            return field, "m2o"
-        else:
-            raise RuntimeError("Unexpected field type")
-
-    # Django 1.9
     type_map = [
         (OneToOneField, "o2o"),
         (OneToOneRel, "o2or"),  # is subclass of m2o so check first

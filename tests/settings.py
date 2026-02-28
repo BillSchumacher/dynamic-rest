@@ -71,7 +71,9 @@ TEMPLATES = [
 
 DYNAMIC_REST = {
     "ENABLE_LINKS": True,
+    "ENABLE_BULK_UPDATE": True,
     "DEBUG": os.environ.get("DYNAMIC_REST_DEBUG", "false").lower() == "true",
     "ENABLE_HASHID_FIELDS": True,
     "HASHIDS_SALT": "It's your kids, Marty!",
+    "MAX_PAGE_SIZE": 1000,
 }
