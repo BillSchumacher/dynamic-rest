@@ -77,8 +77,21 @@ def _get_requested_filters(view, **kwargs) -> TreeMap:
         if operator == "range":
             value = value[:2]
         elif operator == "in":
-            # no-op: i.e. accept `value` as an arbitrarily long list
-            pass
+            # Limit the number of items in an `in` filter to prevent
+            # excessively large SQL IN clauses.
+            max_in = 500
+            if len(value) > max_in:
+                raise ValidationError(
+                    f"Too many values for 'in' filter (max {max_in})."
+                )
+        elif operator == "regex":
+            # Limit regex pattern length to mitigate ReDoS risk.
+            max_regex_len = 200
+            if value and len(value[0]) > max_regex_len:
+                raise ValidationError(
+                    f"Regex pattern too long (max {max_regex_len} characters)."
+                )
+            value = value[0]
         elif operator in VALID_FILTER_OPERATORS:
             value = value[0]
             if operator == "isnull" and isinstance(value, str):
@@ -244,6 +257,7 @@ class DynamicFilterBackend(BaseFilterBackend):
         model: Model,
         fields: dict[str, Field],
         filters: TreeMap,
+        _depth: int = 0,
     ):
         """Build a prefetch dictionary based on request requirements."""
         for name, field in fields.items():
@@ -284,6 +298,7 @@ class DynamicFilterBackend(BaseFilterBackend):
                 filters=filters.get(name, {}),
                 queryset=related_queryset,
                 requirements=required,
+                _depth=_depth + 1,
             )
 
             # Note: There can only be one prefetch per source, even
@@ -340,6 +355,7 @@ class DynamicFilterBackend(BaseFilterBackend):
         requirements: TreeMap = None,
         extra_filters: Q | None = None,
         disable_prefetches: bool = False,
+        _depth: int = 0,
     ) -> QuerySet:
         """Build a queryset that pulls in all data required by this request.
 
@@ -357,6 +373,11 @@ class DynamicFilterBackend(BaseFilterBackend):
             disable_prefetches: An optional flag to disable prefetching.
         """
         is_root_level = False
+        max_depth = settings.MAX_QUERY_DEPTH
+        if max_depth is not None and _depth > max_depth:
+            raise ValidationError(
+                f"Query depth exceeds maximum allowed depth of {max_depth}."
+            )
         if not serializer:
             serializer = self.view.get_serializer()
             is_root_level = True
@@ -395,7 +416,8 @@ class DynamicFilterBackend(BaseFilterBackend):
         if not disable_prefetches:
             # build nested Prefetch queryset
             self._build_requested_prefetches(
-                prefetches, requirements, model, fields, filters
+                prefetches, requirements, model, fields, filters,
+                _depth=_depth,
             )
             # build remaining prefetches out of internal requirements
             # that are not already covered by request requirements

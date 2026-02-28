@@ -1,6 +1,6 @@
 """Prefetching for FastQuery."""
 import copy
-import traceback
+import logging
 from collections import defaultdict
 from functools import lru_cache
 
@@ -8,6 +8,8 @@ from django.db import models
 from django.db.models import Prefetch, QuerySet
 
 from dynamic_rest.meta import get_model_field_and_type
+
+logger = logging.getLogger(__name__)
 
 
 class FastObject(dict):
@@ -182,7 +184,7 @@ class FastQueryCompatMixin(object):
                     )
                 self.prefetches[arg.field] = arg
         except Exception:  # noqa pylint: disable=broad-exception-caught
-            traceback.print_exc()
+            logger.exception("Failed to set up prefetch_related")
 
         return self
 
@@ -205,7 +207,20 @@ class FastQueryCompatMixin(object):
         return qs.count()
 
     def extra(self, *args, **kwargs):
-        """Extra query args."""
+        """Extra query args.
+
+        .. deprecated::
+            Django's QuerySet.extra() is deprecated and poses SQL injection
+            risks. Use .annotate() with database expressions instead.
+        """
+        import warnings
+
+        warnings.warn(
+            "FastQuery.extra() is deprecated due to SQL injection risks. "
+            "Use .annotate() with database expressions instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.queryset = self.queryset.extra(*args, **kwargs)
         return self
 

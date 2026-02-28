@@ -1,6 +1,6 @@
 """This module contains custom router classes."""
 import copy
-import traceback
+import logging
 from collections import OrderedDict, defaultdict
 
 import rest_framework
@@ -12,6 +12,8 @@ from rest_framework.routers import DefaultRouter, Route
 
 from dynamic_rest.conf import settings
 from dynamic_rest.meta import get_model_table
+
+logger = logging.getLogger(__name__)
 
 
 def replace_methodname(format_string, methodname):
@@ -179,8 +181,10 @@ class DynamicRouter(DefaultRouter):
             resource_key = serializer.get_resource_key()
             resource_name = serializer.get_name()
             path_name = serializer.get_plural_name()
-        except BaseException as exc:
-            traceback.print_exc()
+        except Exception as exc:
+            logger.exception(
+                "Failed to extract resource name from viewset: '%s'", viewset
+            )
             raise RuntimeError(
                 f"Failed to extract resource name from viewset: '{viewset}'."
                 " It, or its serializer, may not be DREST-compatible."

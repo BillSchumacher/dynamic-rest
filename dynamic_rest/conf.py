@@ -59,6 +59,10 @@ DYNAMIC_REST = {
     # Enables caching of serializer fields to speed up serializer usage
     # Needs to also be configured on a per-serializer basis
     "ENABLE_FIELDS_CACHE": False,
+    # MAX_QUERY_DEPTH: Maximum depth of nested filter/prefetch queries.
+    # Prevents resource exhaustion from deeply nested query parameters.
+    # None means unlimited (original behavior).
+    "MAX_QUERY_DEPTH": 10,
     # Enables use of hashid fields
     "ENABLE_HASHID_FIELDS": False,
     # Salt value to salt hash ids.

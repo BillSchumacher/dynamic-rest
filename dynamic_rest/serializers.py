@@ -1,6 +1,7 @@
 """This module contains custom serializer classes."""
 import copy
 import inspect
+import logging
 import os
 
 import inflection
@@ -27,6 +28,8 @@ from dynamic_rest.meta import get_model_table
 from dynamic_rest.processors import SideloadingProcessor, post_process
 from dynamic_rest.tagged import TaggedDict
 from dynamic_rest.utils import external_id_from_model_and_internal_id
+
+logger = logging.getLogger(__name__)
 
 OPTS = {"ENABLE_FIELDS_CACHE": os.environ.get("ENABLE_FIELDS_CACHE", False)}
 FIELDS_CACHE = {}
@@ -607,7 +610,9 @@ class WithDynamicSerializerMixin(
                         else:
                             # Fall back on DRF behavior
                             attribute = field.get_attribute(instance)
-                            print(f"Missing {field_name} from {class_name}")
+                            logger.debug(
+                                "Missing %s from %s", field_name, class_name
+                            )
             else:
                 try:
                     attribute = field.get_attribute(instance)
