@@ -488,16 +488,32 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
 
     def _bulk_update(self, data, partial=False):
         """Bulk update records."""
-        # Restrict the update to the filtered queryset.
         queryset = self.filter_queryset(self.get_queryset())
-        # Materialize once for permission checks to avoid a second
-        # DB hit. DynamicListSerializer.update() needs a queryset
-        # (it calls .filter()), so we pass the original queryset
-        # to the serializer and use the prefetched result cache
-        # for permission checks.
+
+        # Extract the IDs from the payload so we only load and
+        # permission-check the targeted objects, not every row
+        # in the filtered queryset.
+        serializer_class = self.get_serializer_class()
+        lookup_attr = getattr(
+            serializer_class.Meta, "update_lookup_field", "id"
+        )
+        try:
+            target_ids = [item[lookup_attr] for item in data]
+        except (KeyError, TypeError) as exc:
+            raise ValidationError(
+                f'Each item must contain a "{lookup_attr}" field.'
+            ) from exc
+
+        queryset = queryset.filter(
+            **{f"{lookup_attr}__in": target_ids}
+        )
+
+        # Materialize once: permission checks iterate the list,
+        # and the serializer gets the queryset (it needs .filter()).
         instances = list(queryset)
         for instance in instances:
             self.check_object_permissions(self.request, instance)
+
         serializer = self.get_serializer(
             queryset,
             data=data,
@@ -741,14 +757,15 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
     def _destroy_many(self, data):
         """Destroy many model instances in bulk."""
         lookup_field = self.lookup_field or "pk"
-        # Data payload uses "id" by convention; queryset filters use
-        # the model's lookup_field (which may be "pk" or a custom field).
-        data_key = "id"
+        # Use lookup_field as the data key so both the payload
+        # extraction and queryset filter are aligned. Fall back to
+        # "id" for backwards compatibility with the common pk case.
+        data_key = lookup_field if lookup_field != "pk" else "id"
         try:
             ids = [d[data_key] for d in data]
         except (KeyError, TypeError) as exc:
             raise ValidationError(
-                f'Each item must contain an "{data_key}" field.'
+                f'Each item must contain a "{data_key}" field.'
             ) from exc
         instances = (
             self.get_queryset()
