@@ -1,6 +1,6 @@
 """Prefetching for FastQuery."""
 import copy
-import traceback
+import logging
 from collections import defaultdict
 from functools import lru_cache
 
@@ -8,6 +8,8 @@ from django.db import models
 from django.db.models import Prefetch, QuerySet
 
 from dynamic_rest.meta import get_model_field_and_type
+
+logger = logging.getLogger(__name__)
 
 
 class FastObject(dict):
@@ -101,7 +103,7 @@ class FastList(list):
         return self
 
 
-class FastPrefetch(object):
+class FastPrefetch:
     """FastPrefetch is a prefetch object that allows for dot notation."""
 
     def __init__(self, field, queryset=None):
@@ -156,7 +158,7 @@ class FastPrefetch(object):
             )
 
 
-class FastQueryCompatMixin(object):
+class FastQueryCompatMixin:
     """Compatibility mixin for FastQuery.
 
     Mixins for FastQuery to provide QuerySet-compatibility APIs.
@@ -182,16 +184,19 @@ class FastQueryCompatMixin(object):
                     )
                 self.prefetches[arg.field] = arg
         except Exception:  # noqa pylint: disable=broad-exception-caught
-            traceback.print_exc()
+            logger.exception("Failed to configure prefetch")
 
         return self
 
-    def only(self, *fields):  # pylint: disable=unused-argument
-        """Only support not implemented.
+    def only(self, *fields):
+        """Restrict fields returned by execute().
 
-        # TODO: support this for realz
-        self.fields = set(self.fields) + set(fields)
+        Stores requested field names so that execute() can pass
+        them to QuerySet.values() for column-level pruning.
         """
+        if self.fields is None:
+            self.fields = set()
+        self.fields.update(fields)
         return self
 
     def exclude(self, *args, **kwargs):
@@ -269,7 +274,7 @@ class FastQueryCompatMixin(object):
         return self
 
 
-class FastQuery(FastQueryCompatMixin, object):
+class FastQuery(FastQueryCompatMixin):
     """FastQuery is a fast queryset that supports prefetching."""
 
     def __init__(self, queryset):
@@ -296,7 +301,19 @@ class FastQuery(FastQueryCompatMixin, object):
         use_fastquery = getattr(self.model, "USE_FASTQUERY", True)
 
         if use_fastquery:
-            data = list(qs.values())
+            if self.fields:
+                # Always include pk field for identity
+                fields = self.fields | {self.pk_field}
+                # Include FK attnames needed for prefetches
+                for fp in self.prefetches.values():
+                    field, _ = get_model_field_and_type(
+                        self.model, fp.field
+                    )
+                    if hasattr(field, 'attname'):
+                        fields.add(field.attname)
+                data = list(qs.values(*fields))
+            else:
+                data = list(qs.values())
 
             self.merge_prefetch(data)
             self._data = FastList(

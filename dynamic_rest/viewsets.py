@@ -283,8 +283,10 @@ class WithDynamicViewSetMixin(
         Arguments:
           queryset: Optional root-level queryset.
         """
+        if hasattr(self, "queryset") and self.queryset is not None:
+            return self.queryset.all()
         serializer = self.get_serializer()
-        return getattr(self, "queryset", serializer.Meta.model.objects.all())
+        return serializer.Meta.model.objects.all()
 
     def get_request_fields(self):
         """Parses the INCLUDE and EXCLUDE features.
@@ -487,8 +489,12 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
     def _bulk_update(self, data, partial=False):
         """Bulk update records."""
         # Restrict the update to the filtered queryset.
+        queryset = self.filter_queryset(self.get_queryset())
+        # Check per-object permissions before updating
+        for instance in queryset:
+            self.check_object_permissions(self.request, instance)
         serializer = self.get_serializer(
-            self.filter_queryset(self.get_queryset()),
+            queryset,
             data=data,
             many=True,
             partial=partial,
@@ -511,6 +517,11 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
             source = field.source or name
             if source == "*" or field.read_only:
                 raise ValidationError(f'Cannot update field: "{name}"')
+            # Run per-field validation to prevent invalid data
+            try:
+                value = field.run_validation(value)
+            except exceptions.ValidationError as e:
+                raise ValidationError({name: e.detail}) from e
             validated[source] = value
         return validated
 
