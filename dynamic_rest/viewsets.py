@@ -525,7 +525,12 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def _validate_patch_all(self, data):
-        """Validate patch-all data."""
+        """Validate patch-all data.
+
+        Validates field types and constraints but skips instance-dependent
+        validators (e.g. UniqueValidator) since patch-all operates on a
+        queryset rather than individual instances.
+        """
         if not isinstance(data, dict):
             raise ValidationError("Patch-all data must be in object form")
         serializer = self.get_serializer()
@@ -538,11 +543,20 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
             source = field.source or name
             if source == "*" or field.read_only:
                 raise ValidationError(f'Cannot update field: "{name}"')
-            # Run per-field validation to prevent invalid data
+            # Run per-field validation to prevent invalid data.
+            # Temporarily strip validators that require instance context
+            # (like UniqueValidator) since patch-all has no single instance.
+            original_validators = field.validators
+            field.validators = [
+                v for v in original_validators
+                if not hasattr(v, 'exclude_current_instance')
+            ]
             try:
                 value = field.run_validation(value)
             except exceptions.ValidationError as e:
                 raise ValidationError({name: e.detail}) from e
+            finally:
+                field.validators = original_validators
             validated[source] = value
         return validated
 
@@ -767,8 +781,11 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
             raise ValidationError(
                 f'Each item must contain a "{data_key}" field.'
             ) from exc
+        # Apply filter_queryset so DRF filter backends (including
+        # DynamicFilterBackend) scope the queryset, consistent with
+        # _bulk_update.
         instances = (
-            self.get_queryset()
+            self.filter_queryset(self.get_queryset())
             .filter(**{f"{lookup_field}__in": ids})
             .distinct()
         )
