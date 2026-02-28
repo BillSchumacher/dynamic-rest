@@ -36,7 +36,7 @@ def post_process(data):
     return data
 
 
-class SideloadingProcessor(object):
+class SideloadingProcessor:
     """A processor that side-loads serializer data.
 
     Side-loaded records are returned under top-level
@@ -55,6 +55,8 @@ class SideloadingProcessor(object):
             serializer = serializer.child
         self.data = defaultdict(list)
         self.seen = defaultdict(set)
+        # Index map for O(1) duplicate lookups: {name: {pk_key: index}}
+        self._index_map = defaultdict(dict)
         self.plural_name = serializer.get_plural_name()
         self.name = serializer.get_name()
 
@@ -127,18 +129,17 @@ class SideloadingProcessor(object):
                 name = f"{settings.ADDITIONAL_PRIMARY_RESOURCE_PREFIX}{name}"
 
             if not seen:
-                # allocate a top-level key in the data for this resource
-                # type
-
                 # move the object into a new top-level bucket
                 # and mark it as seen
+                idx = len(self.data[name])
                 self.data[name].append(obj)
+                self._index_map[name][pk_key] = idx
             else:
                 # obj side-loaded, but maybe with other fields
-                for o in self.data[name]:
-                    if o.instance.pk == pk:
-                        o.update(obj)
-                        break
+                # Use index map for O(1) lookup instead of linear scan
+                idx = self._index_map[name].get(pk_key)
+                if idx is not None and idx < len(self.data[name]):
+                    self.data[name][idx].update(obj)
 
             # replace the object with a reference
             if parent is not None and parent_key is not None:

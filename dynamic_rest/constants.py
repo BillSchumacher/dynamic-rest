@@ -14,7 +14,6 @@ VALID_FILTER_OPERATORS = (
     "month",
     "day",
     "week_day",
-    "regex",
     "range",
     "gt",
     "lt",

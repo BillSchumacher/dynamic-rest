@@ -72,11 +72,11 @@ class UtilsTestCase(TestCase):
         """Test model from definition."""
         self.assertEqual(model_from_definition("tests.models.User"), User)
         self.assertEqual(model_from_definition(User), User)
-        self.assertRaises(
-            AssertionError,
-            model_from_definition,
-            model_definition="django.test.override_settings",
-        )
-        self.assertRaises(
-            AssertionError, model_from_definition, model_definition=User()
-        )
+        with self.assertRaisesRegex(
+            ValueError, 'is not a Django model'
+        ):
+            model_from_definition("django.test.override_settings")
+        with self.assertRaisesRegex(
+            ValueError, 'is not a Django model'
+        ):
+            model_from_definition(User())

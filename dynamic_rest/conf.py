@@ -24,7 +24,7 @@ DYNAMIC_REST = {
     # ENABLE_BULK_PARTIAL_CREATION: enable/disable partial creation in bulk
     "ENABLE_BULK_PARTIAL_CREATION": False,
     # ENABLE_BULK_UPDATE: enable/disable update in bulk
-    "ENABLE_BULK_UPDATE": True,
+    "ENABLE_BULK_UPDATE": False,
     # ENABLE_PATCH_ALL: enable/disable patch by queryset
     "ENABLE_PATCH_ALL": False,
     # DEFER_MANY_RELATIONS: automatically defer many-relations, unless
@@ -36,7 +36,7 @@ DYNAMIC_REST = {
     "LIST_SERIALIZER_CLASS": None,
     # MAX_PAGE_SIZE: global setting for max page size.
     # Can be overriden at the viewset level.
-    "MAX_PAGE_SIZE": None,
+    "MAX_PAGE_SIZE": 1000,
     # PAGE_QUERY_PARAM: global setting for the pagination query parameter.
     # Can be overriden at the viewset level.
     "PAGE_QUERY_PARAM": "page",
@@ -73,7 +73,7 @@ CLASS_ATTRS = [
 ]
 
 
-class Settings(object):
+class Settings:
     """Settings class for dynamic rest."""
 
     def __init__(self, name, defaults, existing_settings, class_attrs=None):

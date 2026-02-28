@@ -130,7 +130,11 @@ class QueryParams(QueryDict):
         if hasattr(query_params, "urlencode"):
             query_string = query_params.urlencode()
         else:
-            assert isinstance(query_params, (str, bytes))
+            if not isinstance(query_params, (str, bytes)):
+                raise TypeError(
+                    f"query_params must be str or bytes, "
+                    f"got {type(query_params).__name__}"
+                )
             query_string = query_params
         kwargs["mutable"] = True
         super().__init__(query_string, *args, **kwargs)
@@ -279,8 +283,10 @@ class WithDynamicViewSetMixin(
         Arguments:
           queryset: Optional root-level queryset.
         """
+        if hasattr(self, "queryset") and self.queryset is not None:
+            return self.queryset.all()
         serializer = self.get_serializer()
-        return getattr(self, "queryset", serializer.Meta.model.objects.all())
+        return serializer.Meta.model.objects.all()
 
     def get_request_fields(self):
         """Parses the INCLUDE and EXCLUDE features.
@@ -431,7 +437,7 @@ class WithDynamicViewSetMixin(
         obj = queryset.first()
 
         if not obj:
-            return Response("Not found", status=404)
+            raise exceptions.NotFound()
 
         # Serialize the related data. Use the field's serializer to ensure
         # it's configured identically to the sideload case. One difference
@@ -482,9 +488,34 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
 
     def _bulk_update(self, data, partial=False):
         """Bulk update records."""
-        # Restrict the update to the filtered queryset.
+        queryset = self.filter_queryset(self.get_queryset())
+
+        # Extract the IDs from the payload so we only load and
+        # permission-check the targeted objects, not every row
+        # in the filtered queryset.
+        serializer_class = self.get_serializer_class()
+        lookup_attr = getattr(
+            serializer_class.Meta, "update_lookup_field", "id"
+        )
+        try:
+            target_ids = [item[lookup_attr] for item in data]
+        except (KeyError, TypeError) as exc:
+            raise ValidationError(
+                f'Each item must contain a "{lookup_attr}" field.'
+            ) from exc
+
+        queryset = queryset.filter(
+            **{f"{lookup_attr}__in": target_ids}
+        )
+
+        # Materialize once: permission checks iterate the list,
+        # and the serializer gets the queryset (it needs .filter()).
+        instances = list(queryset)
+        for instance in instances:
+            self.check_object_permissions(self.request, instance)
+
         serializer = self.get_serializer(
-            self.filter_queryset(self.get_queryset()),
+            queryset,
             data=data,
             many=True,
             partial=partial,
@@ -494,7 +525,12 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def _validate_patch_all(self, data):
-        """Validate patch-all data."""
+        """Validate patch-all data.
+
+        Validates field types and constraints but skips instance-dependent
+        validators (e.g. UniqueValidator) since patch-all operates on a
+        queryset rather than individual instances.
+        """
         if not isinstance(data, dict):
             raise ValidationError("Patch-all data must be in object form")
         serializer = self.get_serializer()
@@ -507,6 +543,20 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
             source = field.source or name
             if source == "*" or field.read_only:
                 raise ValidationError(f'Cannot update field: "{name}"')
+            # Run per-field validation to prevent invalid data.
+            # Temporarily strip validators that require instance context
+            # (like UniqueValidator) since patch-all has no single instance.
+            original_validators = field.validators
+            field.validators = [
+                v for v in original_validators
+                if not hasattr(v, 'exclude_current_instance')
+            ]
+            try:
+                value = field.run_validation(value)
+            except exceptions.ValidationError as e:
+                raise ValidationError({name: e.detail}) from e
+            finally:
+                field.validators = original_validators
             validated[source] = value
         return validated
 
@@ -516,8 +566,10 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
         try:
             return queryset.update(**data)
         except Exception as e:
+            logger.exception("Failed to bulk-update records via query")
             raise ValidationError(
-                "Failed to bulk-update records:\n" f"{str(e)}\n" f"Data: {str(data)}"
+                "Failed to bulk-update records. "
+                "Check that the provided field values are valid."
             ) from e
 
     def _patch_all_loop(self, queryset, data):
@@ -533,8 +585,10 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
                     updated += 1
                 return updated
         except IntegrityError as e:
+            logger.exception("Failed to update records via loop")
             raise ValidationError(
-                "Failed to update records:\n" f"{str(e)}\n" f"Data: {str(data)}"
+                "Failed to update records. "
+                "The update violates a data integrity constraint."
             ) from e
 
     def _patch_all(self, data, query=False):
@@ -716,8 +770,24 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
 
     def _destroy_many(self, data):
         """Destroy many model instances in bulk."""
+        lookup_field = self.lookup_field or "pk"
+        # Use lookup_field as the data key so both the payload
+        # extraction and queryset filter are aligned. Fall back to
+        # "id" for backwards compatibility with the common pk case.
+        data_key = lookup_field if lookup_field != "pk" else "id"
+        try:
+            ids = [d[data_key] for d in data]
+        except (KeyError, TypeError) as exc:
+            raise ValidationError(
+                f'Each item must contain a "{data_key}" field.'
+            ) from exc
+        # Apply filter_queryset so DRF filter backends (including
+        # DynamicFilterBackend) scope the queryset, consistent with
+        # _bulk_update.
         instances = (
-            self.get_queryset().filter(id__in=[d["id"] for d in data]).distinct()
+            self.filter_queryset(self.get_queryset())
+            .filter(**{f"{lookup_field}__in": ids})
+            .distinct()
         )
         for instance in instances:
             self.check_object_permissions(self.request, instance)

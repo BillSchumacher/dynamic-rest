@@ -6,10 +6,8 @@ NAME = "dynamic-rest-bse"
 DESCRIPTION = "Dynamic API support to Django REST Framework. Forked..."
 URL = "http://github.com/BillSchumacher/dynamic-rest"
 VERSION = "2.5.4"
-SCRIPTS = ["manage.py"]
-
 with open("install_requires.txt", encoding="utf-8") as fp:
-    INSTALL_REQUIRES = fp.readlines()
+    INSTALL_REQUIRES = [line.strip() for line in fp if line.strip()]
 
 with open("README.rst", encoding="utf-8") as fp:
     LONG_DESCRIPTION = fp.read()
@@ -22,7 +20,7 @@ setup(
     long_description_content_type="text/x-rst",
     name=NAME,
     packages=find_packages(exclude=["benchmarks", "tests"]),
-    scripts=SCRIPTS,
+    python_requires=">=3.9",
     url=URL,
     version=VERSION,
     classifiers=[

@@ -1,6 +1,4 @@
 """This module contains custom pagination classes."""
-from collections import OrderedDict
-
 from django.core.paginator import InvalidPage
 from django.utils.functional import cached_property
 from rest_framework.exceptions import NotFound
@@ -44,7 +42,7 @@ class DynamicPageNumberPagination(PageNumberPagination):
         """Return a paginated response."""
         meta = self.get_page_metadata()
         if isinstance(data, list):
-            result = OrderedDict()
+            result = {}
             if not self.exclude_count:
                 result["count"] = self.page.paginator.count
                 result["next"] = self.get_next_link()

@@ -3,7 +3,7 @@
 from dynamic_rest.utils import model_from_definition
 
 
-class DynamicSerializerBase(object):
+class DynamicSerializerBase:
     """Base class for all DREST serializers."""
 
     pass
@@ -46,7 +46,7 @@ def cacheable_object(cls):
 
 
 @cacheable_object
-class CacheableFieldMixin(object):
+class CacheableFieldMixin:
     """
     Cachable field mixin.
 
@@ -72,7 +72,7 @@ class CacheableFieldMixin(object):
         return getattr(self.root, "_context", {})
 
 
-class GetModelMixin(object):
+class GetModelMixin:
     """
     Mixin to retrieve model hashid.
 
@@ -99,20 +99,17 @@ class GetModelMixin(object):
         """
         model = self.model
         if model is None:
-            if model is None:
-                custom_fn_name = f"get_{self.field_name}_model"
-                parent = self.parent
-                if hasattr(parent, custom_fn_name):
-                    self.model = getattr(parent, custom_fn_name)()
-                else:
-                    try:
-                        self.model = parent.Meta.model
-                    except AttributeError as exc:
-                        raise AssertionError(
-                            f'No "model" value passed to field "{type(self).__name__}"'
-                        ) from exc
-            elif isinstance(model, str):
-                self.model = model_from_definition(model)
+            custom_fn_name = f"get_{self.field_name}_model"
+            parent = self.parent
+            if hasattr(parent, custom_fn_name):
+                self.model = getattr(parent, custom_fn_name)()
             else:
-                self.model = model
+                try:
+                    self.model = parent.Meta.model
+                except AttributeError as exc:
+                    raise ValueError(
+                        f'No "model" value passed to field "{type(self).__name__}"'
+                    ) from exc
+        elif isinstance(model, str):
+            self.model = model_from_definition(model)
         return self.model

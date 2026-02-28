@@ -84,7 +84,7 @@ class DynamicSortingFilter(OrderingFilter):
         for term in fields:
             stripped_term = term.lstrip("-")
             # add back the '-' add the end if necessary
-            reverse_sort_term = "" if len(stripped_term) is len(term) else "-"
+            reverse_sort_term = "" if len(stripped_term) == len(term) else "-"
             if ordering := self.ordering_for(stripped_term, view):
                 valid_orderings.append(reverse_sort_term + ordering)
             else:

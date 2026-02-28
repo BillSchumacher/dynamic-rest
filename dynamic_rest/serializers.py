@@ -1,12 +1,11 @@
 """This module contains custom serializer classes."""
 import copy
 import inspect
-import os
+import logging
 
 import inflection
 from django.db import models
 from django.utils.functional import cached_property
-from rest_framework import __version__ as drf_version
 from rest_framework import exceptions
 from rest_framework import fields as drf_fields
 from rest_framework import serializers
@@ -28,13 +27,12 @@ from dynamic_rest.processors import SideloadingProcessor, post_process
 from dynamic_rest.tagged import TaggedDict
 from dynamic_rest.utils import external_id_from_model_and_internal_id
 
-OPTS = {"ENABLE_FIELDS_CACHE": os.environ.get("ENABLE_FIELDS_CACHE", False)}
+logger = logging.getLogger(__name__)
+
 FIELDS_CACHE = {}
-DRF_VERSION = drf_version.split(".")
-OLD_DRF = int(DRF_VERSION[0]) <= 3 and int(DRF_VERSION[1]) < 5
 
 
-class WithResourceKeyMixin(object):
+class WithResourceKeyMixin:
     """Mixin for serializers that have a resource key."""
 
     def get_resource_key(self):
@@ -447,7 +445,20 @@ class WithDynamicSerializerMixin(
         if self.id_only():
             return {}
 
-        serializer_fields = copy.deepcopy(all_fields)
+        serializer_fields = {}
+        for k, v in all_fields.items():
+            field = copy.copy(v)
+            # Shallow copy shares nested mutable attributes (validators,
+            # child fields, choices) which can bleed between serializers.
+            # Deep-copy only the known mutable containers to avoid the
+            # cost of a full recursive deepcopy on the entire field tree.
+            if hasattr(v, 'validators'):
+                field.validators = v.validators[:]
+            if hasattr(v, 'child') and v.child is not None:
+                field.child = copy.deepcopy(v.child)
+            if hasattr(v, 'child_relation') and v.child_relation is not None:
+                field.child_relation = copy.deepcopy(v.child_relation)
+            serializer_fields[k] = field
         request_fields = self.request_fields
         deferred = self._get_deferred_field_names(serializer_fields)
 
@@ -607,7 +618,11 @@ class WithDynamicSerializerMixin(
                         else:
                             # Fall back on DRF behavior
                             attribute = field.get_attribute(instance)
-                            print(f"Missing {field_name} from {class_name}")
+                            logger.debug(
+                                "Missing %s from %s",
+                                field_name,
+                                class_name,
+                            )
             else:
                 try:
                     attribute = field.get_attribute(instance)
@@ -699,19 +714,6 @@ class WithDynamicSerializerMixin(
 
         return value
 
-    def save(self, *args, **kwargs):
-        """Serializer save that address prefetch issues."""
-        update = getattr(self, "instance", None) is not None
-        instance = super().save(*args, **kwargs)
-        view = self._context.get("view")
-        if view and update:
-            if OLD_DRF:
-                # Reload the object on update
-                # to get around prefetch cache issues
-                # Fixed in DRF in 3.5.0
-                instance = self.instance = view.get_object()
-        return instance
-
     def id_only(self):
         """Whether the serializer should return an ID instead of an object.
 
@@ -776,7 +778,7 @@ class DynamicModelSerializer(
     pass
 
 
-class EphemeralObject(object):
+class EphemeralObject:
     """Object that initializes attributes from a dict."""
 
     def __init__(self, values_dict):
