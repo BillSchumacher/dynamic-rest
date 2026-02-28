@@ -452,7 +452,7 @@ class WithDynamicSerializerMixin(
             # child fields, choices) which can bleed between serializers.
             # Deep-copy only the known mutable containers to avoid the
             # cost of a full recursive deepcopy on the entire field tree.
-            if hasattr(v, 'validators') and v.validators:
+            if hasattr(v, 'validators'):
                 field.validators = v.validators[:]
             if hasattr(v, 'child') and v.child is not None:
                 field.child = copy.deepcopy(v.child)
@@ -713,10 +713,6 @@ class WithDynamicSerializerMixin(
             value[id_attr] = id_value
 
         return value
-
-    def save(self, *args, **kwargs):
-        """Serializer save that address prefetch issues."""
-        return super().save(*args, **kwargs)
 
     def id_only(self):
         """Whether the serializer should return an ID instead of an object.
