@@ -2,7 +2,6 @@
 import copy
 import inspect
 import logging
-import os
 
 import inflection
 from django.db import models
