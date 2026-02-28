@@ -45,8 +45,18 @@ def _get_sqids():
     return Sqids()
 
 
+def _require_hashid_fields():
+    """Raise if ENABLE_HASHID_FIELDS is not set."""
+    if not getattr(settings, 'ENABLE_HASHID_FIELDS', False):
+        raise ValueError(
+            "To use hashid features you must set "
+            "ENABLE_HASHID_FIELDS to True in your DYNAMIC_REST settings."
+        )
+
+
 def external_id_from_model_and_internal_id(model, internal_id):
     """Return a hash for the model and internal ID combination."""
+    _require_hashid_fields()
     sqids = _get_sqids()
     return sqids.encode([ContentType.objects.get_for_model(model).id, internal_id])
 
@@ -58,6 +68,7 @@ def internal_id_from_model_and_external_id(model, external_id):
     internal ID, we validate here that the external ID decodes as expected,
     and that the content type corresponds to the model we're expecting.
     """
+    _require_hashid_fields()
     sqids = _get_sqids()
 
     try:

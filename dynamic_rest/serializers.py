@@ -446,9 +446,20 @@ class WithDynamicSerializerMixin(
         if self.id_only():
             return {}
 
-        serializer_fields = {
-            k: copy.copy(v) for k, v in all_fields.items()
-        }
+        serializer_fields = {}
+        for k, v in all_fields.items():
+            field = copy.copy(v)
+            # Shallow copy shares nested mutable attributes (validators,
+            # child fields, choices) which can bleed between serializers.
+            # Deep-copy only the known mutable containers to avoid the
+            # cost of a full recursive deepcopy on the entire field tree.
+            if hasattr(v, 'validators') and v.validators:
+                field.validators = v.validators[:]
+            if hasattr(v, 'child') and v.child is not None:
+                field.child = copy.deepcopy(v.child)
+            if hasattr(v, 'child_relation') and v.child_relation is not None:
+                field.child_relation = copy.deepcopy(v.child_relation)
+            serializer_fields[k] = field
         request_fields = self.request_fields
         deferred = self._get_deferred_field_names(serializer_fields)
 

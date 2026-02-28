@@ -439,6 +439,11 @@ class DynamicFilterBackend(BaseFilterBackend):
                 raise ValidationError(
                     f"Invalid filter value: {exc}"
                 ) from exc
+            except Exception as exc:
+                # Other Django query errors (FieldError, DataError, etc.)
+                raise ValidationError(
+                    f"Invalid filter: {exc}"
+                ) from exc
 
         # A serializer can have this optional function
         # to dynamically apply additional filters on

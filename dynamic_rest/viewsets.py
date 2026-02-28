@@ -490,8 +490,13 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
         """Bulk update records."""
         # Restrict the update to the filtered queryset.
         queryset = self.filter_queryset(self.get_queryset())
-        # Check per-object permissions before updating
-        for instance in queryset:
+        # Materialize once for permission checks to avoid a second
+        # DB hit. DynamicListSerializer.update() needs a queryset
+        # (it calls .filter()), so we pass the original queryset
+        # to the serializer and use the prefetched result cache
+        # for permission checks.
+        instances = list(queryset)
+        for instance in instances:
             self.check_object_permissions(self.request, instance)
         serializer = self.get_serializer(
             queryset,
