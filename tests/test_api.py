@@ -679,6 +679,25 @@ class TestUsersAPI(TestCase):
         self.assertIsNotNone(content["users"][0]["display_name"])
         self.assertIsNotNone(content["users"][0]["thumbnail_url"])
 
+    def test_filter_on_nested_source_field(self):
+        """Test filtering on a field whose source spans a relation."""
+        u1 = User.objects.create(name="test1", last_name="user")
+        Profile.objects.create(user=u1, display_name="foo")
+        u2 = User.objects.create(name="test2", last_name="user")
+        Profile.objects.create(user=u2, display_name="moo")
+
+        response = self.client.get("/users/?filter{display_name}=foo")
+        content = json.loads(response.content.decode("utf-8"))
+        self.assertEqual(200, response.status_code)
+        self.assertEqual([u1.pk], [u["id"] for u in content["users"]])
+
+        response = self.client.get("/users/?filter{display_name.icontains}=OO")
+        content = json.loads(response.content.decode("utf-8"))
+        self.assertEqual(200, response.status_code)
+        self.assertEqual(
+            sorted([u1.pk, u2.pk]), sorted(u["id"] for u in content["users"])
+        )
+
     def test_get_with_nested_source_fields_count(self):
         """Test get with nested source fields count."""
         loc = Location.objects.create(name="test location")

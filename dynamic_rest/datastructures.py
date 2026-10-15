@@ -84,6 +84,10 @@ class FilterNode(object):
                 if isinstance(model_field, RelatedObject):
                     model_field_name = model_field.field.related_query_name()
 
+            # Sources that span relations ('profile.display_name') use '.',
+            # but the ORM expects '__'.
+            model_field_name = model_field_name.replace(".", "__")
+
             # If get_all_fields() was used above, field could be unbound,
             # and field.source would be None
             rewritten.append(model_field_name)
