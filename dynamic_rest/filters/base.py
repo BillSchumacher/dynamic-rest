@@ -436,14 +436,16 @@ class DynamicFilterBackend(BaseFilterBackend):
                 ) from e
             except (ValueError, TypeError) as exc:
                 # Bad filter value (e.g. wrong type for field lookup).
-                raise ValidationError(
-                    f"Invalid filter value: {exc}"
-                ) from exc
+                # The details can name model fields, so they are logged
+                # (escaped, as they contain client input) and not returned.
+                logger.warning("Invalid filter value: %r", exc)
+                raise ValidationError("Invalid filter value.") from exc
             except Exception as exc:
-                # Other Django query errors (FieldError, DataError, etc.)
-                raise ValidationError(
-                    f"Invalid filter: {exc}"
-                ) from exc
+                # Other Django query errors (FieldError, etc.). These can
+                # list model fields and lookup types, so they are not
+                # returned to the client.
+                logger.warning("Invalid filter: %r", exc)
+                raise ValidationError("Invalid filter.") from exc
 
         # A serializer can have this optional function
         # to dynamically apply additional filters on

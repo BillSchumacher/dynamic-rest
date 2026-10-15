@@ -365,6 +365,29 @@ class TestUsersAPI(TestCase):
             json.loads(response.content.decode("utf-8")),
         )
 
+    def test_invalid_filter_does_not_expose_model_internals(self):
+        """Test a rejected filter returns a generic message and logs the cause."""
+        with self.assertLogs("dynamic_rest.filters.base", level="WARNING") as logs:
+            response = self.client.get("/users/?filter{name.year}=2020")
+        self.assertEqual(400, response.status_code)
+        self.assertEqual(["Invalid filter."], json.loads(response.content))
+        self.assertIn("TextField", "\n".join(logs.output))
+
+    def test_invalid_filter_value_does_not_expose_model_internals(self):
+        """Test a rejected filter value returns a generic message and logs it."""
+        with self.assertLogs("dynamic_rest.filters.base", level="WARNING") as logs:
+            response = self.client.get("/users/?filter{id}=abc")
+        self.assertEqual(400, response.status_code)
+        self.assertEqual(["Invalid filter value."], json.loads(response.content))
+        self.assertIn("expected a number", "\n".join(logs.output))
+
+    def test_invalid_filter_log_escapes_client_input(self):
+        """Test client-supplied newlines cannot forge log lines."""
+        with self.assertLogs("dynamic_rest.filters.base", level="WARNING") as logs:
+            self.client.get("/users/?filter{id}=1%0AFORGED%20LINE")
+        self.assertEqual(1, len(logs.output))
+        self.assertNotIn("\nFORGED", logs.output[0])
+
     def test_get_with_filter_exclude(self):
         """Test get with filter exclude."""
         url = "/users/?filter{-name}=1"
