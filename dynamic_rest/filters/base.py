@@ -21,7 +21,7 @@ from dynamic_rest.filters.utils import (
     _and,
     _or,
     clause_to_q,
-    has_joins,
+    has_multivalued_joins,
     rewrite_filters,
 )
 from dynamic_rest.meta import get_model_field, is_field_remote, is_model_field
@@ -460,7 +460,7 @@ class DynamicFilterBackend(BaseFilterBackend):
             queryset = queryset.prefetch_related(*prefetch)
         elif isinstance(queryset, Manager):
             queryset = queryset.all()
-        if has_joins(queryset) or not is_root_level:
+        if has_multivalued_joins(queryset) or not is_root_level:
             queryset = queryset.distinct()
 
         if settings.DEBUG:
