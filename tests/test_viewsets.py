@@ -285,9 +285,30 @@ class BulkUpdateTestCase(TestCase):
         self.assertEqual(num_dogs, content["meta"]["updated"])
         self.assertEqual(num_dogs, Dog.objects.filter(fur_color="grey").count())
 
-        selects = [q for q in queries if q["sql"].lstrip().upper().startswith("SELECT")]
+        table = Dog._meta.db_table  # pylint: disable=protected-access
+        selects = [
+            q
+            for q in queries
+            if q["sql"].lstrip().upper().startswith("SELECT") and table in q["sql"]
+        ]
         # one query for the primary keys, then one per batch of two records
         self.assertEqual(1 + -(-num_dogs // 2), len(selects))
+
+    def test_patch_all_with_filter_updates_only_matching_records(self):
+        """Test patch all in batches only updates records matching the filter."""
+        matching = Dog.objects.filter(fur_color__contains="brown").count()
+        self.assertGreater(matching, 2)
+        self.assertLess(matching, Dog.objects.count())
+        with mock.patch("dynamic_rest.viewsets.PATCH_ALL_BATCH_SIZE", 2):
+            response = self.client.patch(
+                "/dogs/?patch-all=true&filter{fur.contains}=brown",
+                json.dumps({"fur": "grey"}),
+                content_type="application/json",
+            )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        content = json.loads(response.content.decode("utf-8"))
+        self.assertEqual(matching, content["meta"]["updated"])
+        self.assertEqual(matching, Dog.objects.filter(fur_color="grey").count())
 
 
 class BulkCreationTestCase(TestCase):

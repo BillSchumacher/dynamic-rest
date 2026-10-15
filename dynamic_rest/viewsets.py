@@ -583,9 +583,12 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
             with transaction.atomic():
                 # Collect only the primary keys up front, then load the
                 # records a batch at a time so memory stays bounded.
-                pks = list(queryset.values_list("pk", flat=True))
+                # De-duplicate: joins can repeat a key, and the base manager
+                # is used so rows hidden by a custom default manager are
+                # still updated.
+                pks = list(dict.fromkeys(queryset.values_list("pk", flat=True)))
                 # pylint: disable-next=protected-access
-                manager = queryset.model._default_manager
+                manager = queryset.model._base_manager
                 for start in range(0, len(pks), PATCH_ALL_BATCH_SIZE):
                     batch = pks[start : start + PATCH_ALL_BATCH_SIZE]
                     for record in manager.filter(pk__in=batch):
@@ -628,8 +631,8 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
 
         This parameter can have one of the following values:
 
-            true (or 1): records will be fetched and then updated in a
-             transaction loop
+            true (or 1): records will be fetched in batches and then
+             updated in a transaction loop
               - The `Model.save` method will be called and model signals
                 will run
               - This can be slow if there are too many signals
