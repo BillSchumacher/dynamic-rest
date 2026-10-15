@@ -445,6 +445,9 @@ class DynamicFilterBackend(BaseFilterBackend):
                 # list model fields and lookup types, so they are not
                 # returned to the client.
                 logger.warning("Invalid filter: %r", exc)
+                # The traceback prints the raw message, which may contain
+                # client input, so it is only logged at debug level.
+                logger.debug("Invalid filter traceback", exc_info=True)
                 raise ValidationError("Invalid filter.") from exc
 
         # A serializer can have this optional function
