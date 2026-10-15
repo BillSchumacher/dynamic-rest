@@ -711,7 +711,9 @@ class TestUsersAPI(TestCase):
             )
             content = json.loads(response.content.decode("utf-8"))
             self.assertEqual(200, response.status_code)
-            self.assertEqual([u.pk for u in expected], [u["id"] for u in content["users"]])
+            self.assertEqual(
+                [u.pk for u in expected], [u["id"] for u in content["users"]]
+            )
 
     def test_get_with_nested_source_fields_count(self):
         """Test get with nested source fields count."""
