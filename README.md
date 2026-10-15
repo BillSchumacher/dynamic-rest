@@ -620,6 +620,12 @@ DYNAMIC_REST = {
     # Can be overriden at the viewset level.
     'MAX_PAGE_SIZE': None,
 
+    # PATCH_ALL_CHECK_OBJECT_PERMISSIONS: check the object-level permissions of
+    # every record in a patch-all update, and reject the request if any is
+    # denied. Patch-all only relies on the queryset and view-level permissions
+    # by default.
+    'PATCH_ALL_CHECK_OBJECT_PERMISSIONS': False,
+
     # PAGE_QUERY_PARAM: global setting for the pagination query parameter.
     # Can be overriden at the viewset level.
     'PAGE_QUERY_PARAM': 'page',

@@ -21,6 +21,9 @@ from dynamic_rest.pagination import DynamicPageNumberPagination
 from dynamic_rest.processors import SideloadingProcessor
 from dynamic_rest.utils import is_truthy
 
+# Number of records loaded at a time when checking patch-all permissions.
+PATCH_ALL_PERMISSION_CHUNK_SIZE = 500
+
 UPDATE_REQUEST_METHODS = ("PUT", "PATCH", "POST")
 DELETE_REQUEST_METHOD = "DELETE"
 PATCH = "PATCH"
@@ -591,9 +594,20 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
                 "The update violates a data integrity constraint."
             ) from e
 
+    def _check_patch_all_permissions(self, queryset):
+        """Check object-level permissions for every record in a queryset.
+
+        Raises the usual permission error for the first denied record, so
+        nothing has been updated when a request is rejected.
+        """
+        for record in queryset.iterator(chunk_size=PATCH_ALL_PERMISSION_CHUNK_SIZE):
+            self.check_object_permissions(self.request, record)
+
     def _patch_all(self, data, query=False):
         """Update all records in a queryset."""
         queryset = self.filter_queryset(self.get_queryset())
+        if settings.PATCH_ALL_CHECK_OBJECT_PERMISSIONS:
+            self._check_patch_all_permissions(queryset)
         data = self._validate_patch_all(data)
         updated = (
             self._patch_all_query(queryset, data)
@@ -615,6 +629,11 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
         and used with caution. This feature must be enabled at the viewset level
         and must also be requested explicitly by the client
         via the "patch-all" query parameter.
+
+        Patch-all does not check object-level permissions unless the
+        PATCH_ALL_CHECK_OBJECT_PERMISSIONS setting is enabled, in which case
+        every record in the queryset is checked first and the whole request is
+        rejected if any record is denied.
 
         This parameter can have one of the following values:
 
