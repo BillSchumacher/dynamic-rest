@@ -159,24 +159,25 @@ class DynamicFilterBackend(BaseFilterBackend):
         """
         complex_filters = filters.get("_complex")
         q = q or Q()
+        includes = filters.get("_include")
+        excludes = filters.get("_exclude")
+
+        if includes:
+            includes = rewrite_filters(includes, serializer)
+            q &= Q(**includes)
+        if excludes:
+            excludes = rewrite_filters(excludes, serializer)
+            for k, v in excludes.items():
+                q &= ~Q(**{k: v})
+
         if not complex_filters:
-            includes = filters.get("_include")
-            excludes = filters.get("_exclude")
+            return q if includes or excludes else None
 
-            if not includes and not excludes:
-                return None
+        # filter{field} params and the filter{} JSON object are combined.
+        return q & self._complex_filters_to_query(complex_filters, serializer)
 
-            if includes:
-                includes = rewrite_filters(includes, serializer)
-                q &= Q(**includes)
-            if excludes:
-                excludes = rewrite_filters(excludes, serializer)
-                for k, v in excludes.items():
-                    q &= ~Q(**{k: v})
-            return q
-
-        filters = complex_filters
-
+    def _complex_filters_to_query(self, filters: dict, serializer) -> Q:
+        """Construct Django Query object from a filter{} JSON object."""
         if ors := filters.get(".or") or filters.get("$or"):
             return reduce(
                 _or,
@@ -190,7 +191,7 @@ class DynamicFilterBackend(BaseFilterBackend):
             )
 
         clauses = [clause_to_q(clause, serializer) for clause in filters.items()]
-        return reduce(_and, clauses) if clauses else q
+        return reduce(_and, clauses) if clauses else Q()
 
     def _create_prefetch(self, source: str, queryset: QuerySet) -> Prefetch:
         """Create a Prefetch object."""

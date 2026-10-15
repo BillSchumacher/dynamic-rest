@@ -365,6 +365,18 @@ class TestUsersAPI(TestCase):
             json.loads(response.content.decode("utf-8")),
         )
 
+    def test_complex_filter_combines_with_simple_filters(self):
+        """Test filter{} JSON and filter{field} params both apply."""
+        f = quote(json.dumps({".or": [{"name": "1"}, {"name": "2"}]}))
+        response = self.client.get(f"/users/?filter{{}}={f}&filter{{name}}=2")
+        content = json.loads(response.content.decode("utf-8"))
+        self.assertEqual(200, response.status_code)
+        self.assertEqual(["2"], [u["name"] for u in content["users"]])
+
+        response = self.client.get(f"/users/?filter{{}}={f}&filter{{-name}}=2")
+        content = json.loads(response.content.decode("utf-8"))
+        self.assertEqual(["1"], [u["name"] for u in content["users"]])
+
     def test_get_with_filter_exclude(self):
         """Test get with filter exclude."""
         url = "/users/?filter{-name}=1"
