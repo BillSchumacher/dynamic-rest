@@ -377,6 +377,16 @@ class TestUsersAPI(TestCase):
         content = json.loads(response.content.decode("utf-8"))
         self.assertEqual(["1"], [u["name"] for u in content["users"]])
 
+    def test_filter_with_range_operator(self):
+        """Test the range operator uses only the first two values."""
+        ids = sorted(user.pk for user in self.fixture.users)
+        url = (
+            f"/users/?filter{{id.range}}={ids[1]}"
+            f"&filter{{id.range}}={ids[2]}&filter{{id.range}}={ids[3]}"
+        )
+        content = self._get_json(url)
+        self.assertEqual(ids[1:3], sorted(user["id"] for user in content["users"]))
+
     def test_get_with_filter_exclude(self):
         """Test get with filter exclude."""
         url = "/users/?filter{-name}=1"
