@@ -26,6 +26,9 @@ def has_joins(queryset: QuerySet) -> bool:
     If this is the case, it is possible for the queryset
     to return duplicate results.
 
+    Superseded by `has_multivalued_joins`, which only reports joins that
+    can actually repeat rows. Kept for backwards compatibility.
+
     Arguments:
         queryset: A queryset.
 

@@ -366,27 +366,26 @@ class TestUsersAPI(TestCase):
             json.loads(response.content.decode("utf-8")),
         )
 
-    def _get_user_list_sql(self, url):
-        """Return the SQL of the main user query for a list request."""
+    def _get_list_sql(self, url, table):
+        """Return the SQL of the main query on a table for a list request."""
         with CaptureQueriesContext(connection) as queries:
             self._get_json(url)
         return [
             q["sql"]
             for q in queries
-            if q["sql"].lstrip().upper().startswith("SELECT")
-            and "tests_user" in q["sql"]
+            if q["sql"].lstrip().upper().startswith("SELECT") and table in q["sql"]
         ][0].upper()
 
     def test_filter_on_single_valued_relation_is_not_distinct(self):
         """Test joins that cannot repeat rows do not force DISTINCT."""
-        sql = self._get_user_list_sql("/users/?filter{location.name}=0")
+        sql = self._get_list_sql("/users/?filter{location.name}=0", "tests_user")
         self.assertIn("JOIN", sql)
         self.assertNotIn("DISTINCT", sql)
 
     def test_filter_on_multi_valued_relation_is_distinct(self):
         """Test joins that can repeat rows are de-duplicated."""
         url = "/users/?filter{groups.name.in}=0&filter{groups.name.in}=1"
-        self.assertIn("DISTINCT", self._get_user_list_sql(url))
+        self.assertIn("DISTINCT", self._get_list_sql(url, "tests_user"))
 
         content = self._get_json(url)
         ids = [user["id"] for user in content["users"]]
@@ -396,15 +395,14 @@ class TestUsersAPI(TestCase):
     def test_filter_through_single_then_multi_valued_relation_is_distinct(self):
         """Test a multi-valued join anywhere in the chain forces DISTINCT."""
         url = "/cats/?filter{home.users.name.in}=0&filter{home.users.name.in}=1"
-        with CaptureQueriesContext(connection) as queries:
-            self._get_json(url)
-        sql = [
-            q["sql"]
-            for q in queries
-            if q["sql"].lstrip().upper().startswith("SELECT")
-            and "tests_cat" in q["sql"]
-        ][0].upper()
-        self.assertIn("DISTINCT", sql)
+        self.assertIn("DISTINCT", self._get_list_sql(url, "tests_cat"))
+
+    def test_exclude_on_multi_valued_relation_returns_each_row_once(self):
+        """Test an exclude on a multi-valued relation does not repeat rows."""
+        content = self._get_json("/users/?filter{-groups.name}=no-such-group")
+        ids = [user["id"] for user in content["users"]]
+        self.assertEqual(len(self.fixture.users), len(ids))
+        self.assertEqual(len(ids), len(set(ids)))
 
     def test_get_with_filter_exclude(self):
         """Test get with filter exclude."""

@@ -543,6 +543,8 @@ The sky is the limit! DREST supports just about every basic filtering scenario a
 
 See the [full list here](dynamic_rest/filters.py#L153-L176).
 
+Filters across many-to-many or reverse relations (for example `filter{groups.name}=Home`) can match a row several times, so DREST applies `DISTINCT` to those queries. Filters that only follow forward foreign keys or one-to-one relations do not need it and are left alone. On large tables, `DISTINCT` combined with `count()` can be slow, so prefer `per_page` with the `exclude_count` query parameter when filtering across multi-valued relations.
+
 ## Ordering
 
 You can use the `sort[]` feature to order your response by one or more fields. Dot notation is supported for sorting by nested properties:
