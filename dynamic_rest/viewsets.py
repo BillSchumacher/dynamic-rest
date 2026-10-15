@@ -5,7 +5,7 @@ import json
 import logging
 from typing import Protocol, runtime_checkable
 
-from django.core.exceptions import ObjectDoesNotExist
+from django.core.exceptions import ImproperlyConfigured, ObjectDoesNotExist
 from django.db import IntegrityError, transaction
 from django.http import QueryDict
 from rest_framework import exceptions, status, viewsets
@@ -21,14 +21,25 @@ from dynamic_rest.pagination import DynamicPageNumberPagination
 from dynamic_rest.processors import SideloadingProcessor
 from dynamic_rest.utils import is_truthy
 
-# Number of records loaded and saved at a time by a patch-all update.
-PATCH_ALL_BATCH_SIZE = 500
-
 UPDATE_REQUEST_METHODS = ("PUT", "PATCH", "POST")
 DELETE_REQUEST_METHOD = "DELETE"
 PATCH = "PATCH"
 
 logger = logging.getLogger(__name__)
+
+
+def _get_patch_all_batch_size() -> int:
+    """Return the validated PATCH_ALL_BATCH_SIZE setting."""
+    batch_size = settings.PATCH_ALL_BATCH_SIZE
+    if (
+        not isinstance(batch_size, int)
+        or isinstance(batch_size, bool)
+        or batch_size < 1
+    ):
+        raise ImproperlyConfigured(
+            f"PATCH_ALL_BATCH_SIZE must be a positive integer, got {batch_size!r}."
+        )
+    return batch_size
 
 
 def _extract_object_params(
@@ -579,6 +590,7 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
         """Update by transaction loop."""
         # update by transaction loop
         updated = 0
+        batch_size = _get_patch_all_batch_size()
         try:
             with transaction.atomic():
                 # Collect only the primary keys up front, then load the
@@ -589,8 +601,8 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
                 pks = list(dict.fromkeys(queryset.values_list("pk", flat=True)))
                 # pylint: disable-next=protected-access
                 manager = queryset.model._base_manager
-                for start in range(0, len(pks), PATCH_ALL_BATCH_SIZE):
-                    batch = pks[start : start + PATCH_ALL_BATCH_SIZE]
+                for start in range(0, len(pks), batch_size):
+                    batch = pks[start : start + batch_size]
                     for record in manager.filter(pk__in=batch):
                         for k, v in data.items():
                             setattr(record, k, v)

@@ -1,9 +1,10 @@
 """Tests for viewsets."""
 import json
 import os
-from unittest import mock
 
+from django.core.exceptions import ImproperlyConfigured
 from django.db import connection
+from django.test import override_settings
 from django.test.client import RequestFactory
 from django.test.utils import CaptureQueriesContext
 from rest_framework import exceptions, status
@@ -273,7 +274,7 @@ class BulkUpdateTestCase(TestCase):
         num_dogs = Dog.objects.count()
         self.assertGreater(num_dogs, 2)
         data = {"fur": "grey"}
-        with mock.patch("dynamic_rest.viewsets.PATCH_ALL_BATCH_SIZE", 2):
+        with override_settings(DYNAMIC_REST={"PATCH_ALL_BATCH_SIZE": 2}):
             with CaptureQueriesContext(connection) as queries:
                 response = self.client.patch(
                     "/dogs/?patch-all=true",
@@ -299,7 +300,7 @@ class BulkUpdateTestCase(TestCase):
         matching = Dog.objects.filter(fur_color__contains="brown").count()
         self.assertGreater(matching, 2)
         self.assertLess(matching, Dog.objects.count())
-        with mock.patch("dynamic_rest.viewsets.PATCH_ALL_BATCH_SIZE", 2):
+        with override_settings(DYNAMIC_REST={"PATCH_ALL_BATCH_SIZE": 2}):
             response = self.client.patch(
                 "/dogs/?patch-all=true&filter{fur.contains}=brown",
                 json.dumps({"fur": "grey"}),
@@ -309,6 +310,19 @@ class BulkUpdateTestCase(TestCase):
         content = json.loads(response.content.decode("utf-8"))
         self.assertEqual(matching, content["meta"]["updated"])
         self.assertEqual(matching, Dog.objects.filter(fur_color="grey").count())
+
+    def test_patch_all_rejects_invalid_batch_size(self):
+        """Test patch all requires a positive integer batch size."""
+        for value in (0, -1, "10", None):
+            with self.subTest(value=value):
+                with override_settings(DYNAMIC_REST={"PATCH_ALL_BATCH_SIZE": value}):
+                    with self.assertRaises(ImproperlyConfigured):
+                        self.client.patch(
+                            "/dogs/?patch-all=true",
+                            json.dumps({"fur": "grey"}),
+                            content_type="application/json",
+                        )
+        self.assertEqual(0, Dog.objects.filter(fur_color="grey").count())
 
 
 class BulkCreationTestCase(TestCase):
