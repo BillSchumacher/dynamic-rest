@@ -531,6 +531,15 @@ You can filter a user by his name (exact match):
     200 OK
 ```
 
+... or pass a JSON object to `filter{}` for `.or` / `.and` conditions. Any `filter{field}` params in the same request are applied as well, and all of them must match:
+
+```
+-->
+    GET /users/?filter{}={".or":[{"name":"John"},{"name":"Joe"}]}&filter{-groups}=1
+<--
+    200 OK
+```
+
 The sky is the limit! DREST supports just about every basic filtering scenario and operator that you can use in Django:
 
 -   in
