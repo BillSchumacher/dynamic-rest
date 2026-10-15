@@ -14,7 +14,7 @@ jobs:
       matrix:
         python-version: [3.9, "3.10", "3.11", "3.12"]
         dj-version: ["3.2.*", "4.0.*", "4.1.*", "4.2.*", "5.0.*", "5.1.*", "5.2.*"]
-        drf-version: ["3.11.*", "3.12.*", "3.13.*", "3.14.*", "3.15.*", "3.16.*"]
+        drf-version: ["3.11.*", "3.12.*", "3.13.*", "3.14.*", "3.15.*", "3.16.*", "3.17.*"]
         exclude:
         - dj-version: '4.0.*'
           drf-version: '3.11.*'
@@ -64,6 +64,14 @@ jobs:
           drf-version: '3.16.*'
         - dj-version: '4.1.*'
           drf-version: '3.16.*'
+        - dj-version: '3.2.*'
+          drf-version: '3.17.*'
+        - dj-version: '4.0.*'
+          drf-version: '3.17.*'
+        - dj-version: '4.1.*'
+          drf-version: '3.17.*'
+        - python-version: 3.9
+          drf-version: '3.17.*'
 
     services:
       postgres:
