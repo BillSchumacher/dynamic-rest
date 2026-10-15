@@ -21,6 +21,9 @@ from dynamic_rest.pagination import DynamicPageNumberPagination
 from dynamic_rest.processors import SideloadingProcessor
 from dynamic_rest.utils import is_truthy
 
+# Number of records loaded and saved at a time by a patch-all update.
+PATCH_ALL_BATCH_SIZE = 500
+
 UPDATE_REQUEST_METHODS = ("PUT", "PATCH", "POST")
 DELETE_REQUEST_METHOD = "DELETE"
 PATCH = "PATCH"
@@ -578,11 +581,18 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
         updated = 0
         try:
             with transaction.atomic():
-                for record in queryset:
-                    for k, v in data.items():
-                        setattr(record, k, v)
-                    record.save()
-                    updated += 1
+                # Collect only the primary keys up front, then load the
+                # records a batch at a time so memory stays bounded.
+                pks = list(queryset.values_list("pk", flat=True))
+                # pylint: disable-next=protected-access
+                manager = queryset.model._default_manager
+                for start in range(0, len(pks), PATCH_ALL_BATCH_SIZE):
+                    batch = pks[start : start + PATCH_ALL_BATCH_SIZE]
+                    for record in manager.filter(pk__in=batch):
+                        for k, v in data.items():
+                            setattr(record, k, v)
+                        record.save()
+                        updated += 1
                 return updated
         except IntegrityError as e:
             logger.exception("Failed to update records via loop")

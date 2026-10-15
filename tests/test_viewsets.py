@@ -1,8 +1,11 @@
 """Tests for viewsets."""
 import json
 import os
+from unittest import mock
 
+from django.db import connection
 from django.test.client import RequestFactory
+from django.test.utils import CaptureQueriesContext
 from rest_framework import exceptions, status
 from rest_framework.request import Request
 
@@ -264,6 +267,27 @@ class BulkUpdateTestCase(TestCase):
             num_dogs,
             Dog.objects.filter(fur_color="grey").count(),
         )
+
+    def test_patch_all_loads_records_in_batches(self):
+        """Test patch all loads records in batches, not all at once."""
+        num_dogs = Dog.objects.count()
+        self.assertGreater(num_dogs, 2)
+        data = {"fur": "grey"}
+        with mock.patch("dynamic_rest.viewsets.PATCH_ALL_BATCH_SIZE", 2):
+            with CaptureQueriesContext(connection) as queries:
+                response = self.client.patch(
+                    "/dogs/?patch-all=true",
+                    json.dumps(data),
+                    content_type="application/json",
+                )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        content = json.loads(response.content.decode("utf-8"))
+        self.assertEqual(num_dogs, content["meta"]["updated"])
+        self.assertEqual(num_dogs, Dog.objects.filter(fur_color="grey").count())
+
+        selects = [q for q in queries if q["sql"].lstrip().upper().startswith("SELECT")]
+        # one query for the primary keys, then one per batch of two records
+        self.assertEqual(1 + -(-num_dogs // 2), len(selects))
 
 
 class BulkCreationTestCase(TestCase):
