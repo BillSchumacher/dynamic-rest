@@ -130,7 +130,9 @@ class DynamicSortingFilter(OrderingFilter):
 
         model_chain.append(last_field.source or last_segment)
 
-        return "__".join(model_chain)
+        # Sources that span relations ('profile.display_name') use '.',
+        # but the ORM expects '__'.
+        return "__".join(model_chain).replace(".", "__")
 
     def _is_allowed_term(self, term: str, view: "DynamicModelViewSet") -> bool:
         """Check if a term is allowed to be ordered on."""

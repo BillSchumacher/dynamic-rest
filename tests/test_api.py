@@ -698,6 +698,21 @@ class TestUsersAPI(TestCase):
             sorted([u1.pk, u2.pk]), sorted(u["id"] for u in content["users"])
         )
 
+    def test_sort_on_nested_source_field(self):
+        """Test sorting on a field whose source spans a relation."""
+        u1 = User.objects.create(name="test1", last_name="user")
+        Profile.objects.create(user=u1, display_name="b")
+        u2 = User.objects.create(name="test2", last_name="user")
+        Profile.objects.create(user=u2, display_name="a")
+
+        for sort, expected in (("display_name", [u2, u1]), ("-display_name", [u1, u2])):
+            response = self.client.get(
+                f"/users/?filter{{id.in}}={u1.pk}&filter{{id.in}}={u2.pk}&sort[]={sort}"
+            )
+            content = json.loads(response.content.decode("utf-8"))
+            self.assertEqual(200, response.status_code)
+            self.assertEqual([u.pk for u in expected], [u["id"] for u in content["users"]])
+
     def test_get_with_nested_source_fields_count(self):
         """Test get with nested source fields count."""
         loc = Location.objects.create(name="test location")
