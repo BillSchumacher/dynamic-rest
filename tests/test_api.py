@@ -377,6 +377,53 @@ class TestUsersAPI(TestCase):
         content = json.loads(response.content.decode("utf-8"))
         self.assertEqual(["1"], [u["name"] for u in content["users"]])
 
+    def _get_complex_filter(self, filters, expected_status=200):
+        """GET /users/ with a filter{} JSON object."""
+        url = f"/users/?filter{{}}={quote(json.dumps(filters))}"
+        return self._get_json(url, expected_status)
+
+    def test_complex_filter_ignores_empty_clauses(self):
+        """Test empty clauses inside .and / .or are skipped."""
+        for filters in (
+            {".and": [{}, {"name": "1"}]},
+            {".or": [{}, {"name": "1"}]},
+            {"$and": [{"name": "1"}, {}]},
+            {"$or": [{"name": "1"}, {}]},
+            {".and": [{".or": [{}, {"name": "1"}]}, {}]},
+        ):
+            with self.subTest(filters=filters):
+                content = self._get_complex_filter(filters)
+                self.assertEqual(["1"], [u["name"] for u in content["users"]])
+
+    def test_complex_filter_rejects_lists_without_a_usable_clause(self):
+        """Test .and / .or need at least one non-empty clause."""
+        for filters in (
+            {".and": [{}]},
+            {".or": [{}]},
+            {".and": []},
+            {".or": []},
+            {".and": [{".or": [{}]}]},
+        ):
+            with self.subTest(filters=filters):
+                self._get_complex_filter(filters, expected_status=400)
+
+    def test_complex_filter_rejects_malformed_clauses(self):
+        """Test .and / .or must hold a list of objects."""
+        for filters in (
+            {".and": {"name": "1"}},
+            {".or": "name"},
+            {".or": ["name"]},
+            {".and": [["name", "1"]]},
+        ):
+            with self.subTest(filters=filters):
+                self._get_complex_filter(filters, expected_status=400)
+
+    def test_complex_filter_must_be_an_object(self):
+        """Test a filter{} value that is not an object is rejected."""
+        for filters in ([{"name": "1"}], "name", 1):
+            with self.subTest(filters=filters):
+                self._get_complex_filter(filters, expected_status=400)
+
     def test_filter_with_range_operator(self):
         """Test the range operator uses only the first two values."""
         ids = sorted(user.pk for user in self.fixture.users)
