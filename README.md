@@ -71,7 +71,9 @@ over HTTP.
 
 -   Python (3.9, 3.10, 3.11, 3.12)
 -   Django (3.1, 3.2, 4.0, 4.1, 4.2, 5.0, 5.1, 5.2)
--   Django REST Framework (3.11, 3.12, 3.13, 3.14, 3.15, 3.16)
+-   Django REST Framework (3.11, 3.12, 3.13, 3.14, 3.15, 3.16, 3.17)
+
+Django REST Framework 3.17 requires Python 3.10+ and Django 4.2+.
 
 # Installation
 
@@ -628,6 +630,10 @@ DYNAMIC_REST = {
     # Can be overriden at the viewset level.
     'PATCH_ALL_CHECK_OBJECT_PERMISSIONS': False,
 
+    # PATCH_ALL_BATCH_SIZE: number of records loaded and saved at a time by a
+    # patch-all update. Must be a positive integer.
+    'PATCH_ALL_BATCH_SIZE': 500,
+
     # PAGE_QUERY_PARAM: global setting for the pagination query parameter.
     # Can be overriden at the viewset level.
     'PAGE_QUERY_PARAM': 'page',
@@ -657,7 +663,7 @@ We actively support the following:
 
 -   Python: 3.6, 3.7, 3.8, 3.9, 3.10, 3.11, 3.12
 -   Django: 2.2, 3.1, 3.2, 4.0, 4.1, 4.2, 5.0, 5.1, 5.2
--   Django Rest Framework: 3.11, 3.12, 3.13, 3.14, 3.15, 3.16
+-   Django Rest Framework: 3.11, 3.12, 3.13, 3.14, 3.15, 3.16, 3.17 (3.17 requires Python 3.10+ and Django 4.2+)
 
 **Note:** Some combinations are not supported. For up-to-date information on actively supported/tested combinations, see the `tox.ini` file.
 

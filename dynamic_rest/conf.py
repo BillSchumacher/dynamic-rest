@@ -33,6 +33,9 @@ DYNAMIC_REST = {
     "PATCH_ALL_CHECK_OBJECT_PERMISSIONS": False,
     # ENABLE_PATCH_ALL: enable/disable patch by queryset
     "ENABLE_PATCH_ALL": False,
+    # PATCH_ALL_BATCH_SIZE: number of records loaded and saved at a time by
+    # a patch-all update. Must be a positive integer.
+    "PATCH_ALL_BATCH_SIZE": 500,
     # DEFER_MANY_RELATIONS: automatically defer many-relations, unless
     # `deferred=False` is explicitly set on the field.
     "DEFER_MANY_RELATIONS": False,
