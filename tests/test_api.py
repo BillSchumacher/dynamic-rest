@@ -6,6 +6,7 @@ from urllib.parse import quote, quote_plus
 
 from django.db import connection
 from django.test import override_settings
+from django.test.utils import CaptureQueriesContext
 from rest_framework.exceptions import ErrorDetail
 
 from tests.models import Cat, Group, Location, Permission, Profile, User
@@ -437,6 +438,44 @@ class TestUsersAPI(TestCase):
         content = self._get_json(url)
         self.assertEqual(ids[1:3], sorted(user["id"] for user in content["users"]))
 
+    def _get_list_sql(self, url, table):
+        """Return the SQL of the main query on a table for a list request."""
+        with CaptureQueriesContext(connection) as queries:
+            self._get_json(url)
+        return [
+            q["sql"]
+            for q in queries
+            if q["sql"].lstrip().upper().startswith("SELECT") and table in q["sql"]
+        ][0].upper()
+
+    def test_filter_on_single_valued_relation_is_not_distinct(self):
+        """Test joins that cannot repeat rows do not force DISTINCT."""
+        sql = self._get_list_sql("/users/?filter{location.name}=0", "tests_user")
+        self.assertIn("JOIN", sql)
+        self.assertNotIn("DISTINCT", sql)
+
+    def test_filter_on_multi_valued_relation_is_distinct(self):
+        """Test joins that can repeat rows are de-duplicated."""
+        url = "/users/?filter{groups.name.in}=0&filter{groups.name.in}=1"
+        self.assertIn("DISTINCT", self._get_list_sql(url, "tests_user"))
+
+        content = self._get_json(url)
+        ids = [user["id"] for user in content["users"]]
+        self.assertEqual(len(self.fixture.users), len(ids))
+        self.assertEqual(len(ids), len(set(ids)))
+
+    def test_filter_through_single_then_multi_valued_relation_is_distinct(self):
+        """Test a multi-valued join anywhere in the chain forces DISTINCT."""
+        url = "/cats/?filter{home.users.name.in}=0&filter{home.users.name.in}=1"
+        self.assertIn("DISTINCT", self._get_list_sql(url, "tests_cat"))
+
+    def test_exclude_on_multi_valued_relation_returns_each_row_once(self):
+        """Test an exclude on a multi-valued relation does not repeat rows."""
+        content = self._get_json("/users/?filter{-groups.name}=no-such-group")
+        ids = [user["id"] for user in content["users"]]
+        self.assertEqual(len(self.fixture.users), len(ids))
+        self.assertEqual(len(ids), len(set(ids)))
+
     def test_get_with_filter_exclude(self):
         """Test get with filter exclude."""
         url = "/users/?filter{-name}=1"
@@ -750,6 +789,60 @@ class TestUsersAPI(TestCase):
         self.assertEqual(200, response.status_code)
         self.assertIsNotNone(content["users"][0]["display_name"])
         self.assertIsNotNone(content["users"][0]["thumbnail_url"])
+
+    def test_filter_on_nested_source_field(self):
+        """Test filtering on a field whose source spans a relation."""
+        u1 = User.objects.create(name="test1", last_name="user")
+        Profile.objects.create(user=u1, display_name="foo")
+        u2 = User.objects.create(name="test2", last_name="user")
+        Profile.objects.create(user=u2, display_name="moo")
+
+        response = self.client.get("/users/?filter{display_name}=foo")
+        content = json.loads(response.content.decode("utf-8"))
+        self.assertEqual(200, response.status_code)
+        self.assertEqual([u1.pk], [u["id"] for u in content["users"]])
+
+        response = self.client.get("/users/?filter{display_name.icontains}=OO")
+        content = json.loads(response.content.decode("utf-8"))
+        self.assertEqual(200, response.status_code)
+        self.assertEqual(
+            sorted([u1.pk, u2.pk]), sorted(u["id"] for u in content["users"])
+        )
+
+    def test_sort_on_nested_source_field(self):
+        """Test sorting on a field whose source spans a relation."""
+        u1 = User.objects.create(name="test1", last_name="user")
+        Profile.objects.create(user=u1, display_name="b")
+        u2 = User.objects.create(name="test2", last_name="user")
+        Profile.objects.create(user=u2, display_name="a")
+
+        for sort, expected in (("display_name", [u2, u1]), ("-display_name", [u1, u2])):
+            response = self.client.get(
+                f"/users/?filter{{id.in}}={u1.pk}&filter{{id.in}}={u2.pk}&sort[]={sort}"
+            )
+            content = json.loads(response.content.decode("utf-8"))
+            self.assertEqual(200, response.status_code)
+            self.assertEqual(
+                [u.pk for u in expected], [u["id"] for u in content["users"]]
+            )
+
+    def test_filter_and_sort_on_multi_hop_source_field(self):
+        """Test filtering and sorting on a source spanning two relations."""
+        home = Location.objects.create(name="home")
+        away = Location.objects.create(name="away")
+        u1 = User.objects.create(name="test1", last_name="user", location=home)
+        Profile.objects.create(user=u1, display_name="foo")
+        u2 = User.objects.create(name="test2", last_name="user", location=away)
+        Profile.objects.create(user=u2, display_name="moo")
+
+        content = self._get_json("/profiles/?filter{user_location_name}=home")
+        self.assertEqual([u1.pk], [p["user"] for p in content["profiles"]])
+
+        content = self._get_json("/profiles/?sort[]=user_location_name")
+        self.assertEqual([u2.pk, u1.pk], [p["user"] for p in content["profiles"]])
+
+        content = self._get_json("/profiles/?sort[]=-user_location_name")
+        self.assertEqual([u1.pk, u2.pk], [p["user"] for p in content["profiles"]])
 
     def test_get_with_nested_source_fields_count(self):
         """Test get with nested source fields count."""
