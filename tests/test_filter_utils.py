@@ -1,4 +1,6 @@
 """Tests for dynamic_rest.filters.utils."""
+from unittest import mock
+
 from django.test import SimpleTestCase
 
 from dynamic_rest.filters.utils import has_joins, has_multivalued_joins
@@ -51,3 +53,25 @@ class HasMultivaluedJoinsTestCase(SimpleTestCase):
             if join.join_type:
                 join.join_field = None
         self.assertTrue(has_multivalued_joins(queryset))
+
+    def _forward_join_field(self, queryset):
+        """Return the field of the single join in a queryset."""
+        (join,) = (j for j in queryset.query.alias_map.values() if j.join_type)
+        return join.join_field
+
+    def test_forward_join_without_a_unique_target_is_multivalued(self):
+        """Test a forward field that does not guarantee a unique target.
+
+        Django requires the target of a foreign object to be unique, unless
+        the field class sets requires_unique_target to False. Such a join can
+        match several rows, so it must be treated as multi-valued.
+        """
+        queryset = User.objects.filter(location__name="a")
+        field = self._forward_join_field(queryset)
+        self.assertTrue(field.requires_unique_target)
+        self.assertFalse(has_multivalued_joins(queryset))
+
+        with mock.patch.object(field, "requires_unique_target", False):
+            self.assertTrue(has_multivalued_joins(queryset))
+
+        self.assertFalse(has_multivalued_joins(queryset))

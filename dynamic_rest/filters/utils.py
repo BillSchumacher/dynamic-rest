@@ -46,7 +46,13 @@ def has_multivalued_joins(queryset: QuerySet) -> bool:
     the queryset return duplicate results. Joins that follow a forward
     foreign key or a one-to-one relation cannot.
 
-    A join that cannot be classified is treated as multi-valued.
+    Django's system checks (fields.E310 / fields.E311) require the target of a
+    forward foreign key or foreign object to be unique, which is why such a
+    join is single-valued. A custom field class that opts out by setting
+    `requires_unique_target = False` gives no such guarantee, so joins across
+    it are treated as multi-valued. So is a join that cannot be classified.
+    A project that silences those system checks for a field takes
+    responsibility for the field's joins returning one row.
 
     Arguments:
         queryset: A queryset.
@@ -58,7 +64,12 @@ def has_multivalued_joins(queryset: QuerySet) -> bool:
         if not join.join_type:
             continue
         join_field = getattr(join, "join_field", None)
-        if join_field is None or join_field.one_to_many or join_field.many_to_many:
+        if (
+            join_field is None
+            or join_field.one_to_many
+            or join_field.many_to_many
+            or not getattr(join_field, "requires_unique_target", True)
+        ):
             return True
     return False
 
