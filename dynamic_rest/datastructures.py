@@ -2,7 +2,27 @@
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
+from dynamic_rest.conf import settings
 from dynamic_rest.meta import get_lookup_path
+
+
+def protects_write_only_fields(serializer) -> bool:
+    """Return True if write-only fields of a serializer cannot be queried.
+
+    Write-only fields are never rendered, so filtering or sorting on them
+    reveals their values. The `protect_write_only_fields` option in the
+    serializer's Meta class wins over the PROTECT_WRITE_ONLY_FIELDS setting.
+
+    Arguments:
+        serializer: a serializer instance.
+
+    Returns:
+        True if filters and sorting must not use write-only fields.
+    """
+    option = getattr(
+        getattr(serializer, "Meta", None), "protect_write_only_fields", None
+    )
+    return settings.PROTECT_WRITE_ONLY_FIELDS if option is None else bool(option)
 
 
 class FilterNode(object):
@@ -70,9 +90,12 @@ class FilterNode(object):
                 rewritten.append("pk")
                 continue
 
-            # Write-only fields are never rendered, so filtering on them would
-            # reveal their values. Treat them as if they did not exist.
-            if field_name not in fields or fields[field_name].write_only:
+            # When write-only fields are protected, treat them as if they did
+            # not exist: they are never rendered, so filtering on them would
+            # reveal their values.
+            if field_name not in fields or (
+                fields[field_name].write_only and protects_write_only_fields(s)
+            ):
                 raise ValidationError(f"Invalid filter field: {field_name}")
 
             field = fields[field_name]
