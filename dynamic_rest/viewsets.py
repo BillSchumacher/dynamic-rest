@@ -5,7 +5,7 @@ import json
 import logging
 from typing import Protocol, runtime_checkable
 
-from django.core.exceptions import ObjectDoesNotExist
+from django.core.exceptions import ImproperlyConfigured, ObjectDoesNotExist
 from django.db import IntegrityError, transaction
 from django.http import QueryDict
 from rest_framework import exceptions, status, viewsets
@@ -26,6 +26,20 @@ DELETE_REQUEST_METHOD = "DELETE"
 PATCH = "PATCH"
 
 logger = logging.getLogger(__name__)
+
+
+def _get_patch_all_batch_size() -> int:
+    """Return the validated PATCH_ALL_BATCH_SIZE setting."""
+    batch_size = settings.PATCH_ALL_BATCH_SIZE
+    if (
+        not isinstance(batch_size, int)
+        or isinstance(batch_size, bool)
+        or batch_size < 1
+    ):
+        raise ImproperlyConfigured(
+            f"PATCH_ALL_BATCH_SIZE must be a positive integer, got {batch_size!r}."
+        )
+    return batch_size
 
 
 def _extract_object_params(
@@ -576,13 +590,24 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
         """Update by transaction loop."""
         # update by transaction loop
         updated = 0
+        batch_size = _get_patch_all_batch_size()
         try:
             with transaction.atomic():
-                for record in queryset:
-                    for k, v in data.items():
-                        setattr(record, k, v)
-                    record.save()
-                    updated += 1
+                # Collect only the primary keys up front, then load the
+                # records a batch at a time so memory stays bounded.
+                # De-duplicate: joins can repeat a key, and the base manager
+                # is used so rows hidden by a custom default manager are
+                # still updated.
+                pks = list(dict.fromkeys(queryset.values_list("pk", flat=True)))
+                # pylint: disable-next=protected-access
+                manager = queryset.model._base_manager
+                for start in range(0, len(pks), batch_size):
+                    batch = pks[start : start + batch_size]
+                    for record in manager.filter(pk__in=batch):
+                        for k, v in data.items():
+                            setattr(record, k, v)
+                        record.save()
+                        updated += 1
                 return updated
         except IntegrityError as e:
             logger.exception("Failed to update records via loop")
@@ -618,8 +643,8 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
 
         This parameter can have one of the following values:
 
-            true (or 1): records will be fetched and then updated in a
-             transaction loop
+            true (or 1): records will be fetched in batches and then
+             updated in a transaction loop
               - The `Model.save` method will be called and model signals
                 will run
               - This can be slow if there are too many signals

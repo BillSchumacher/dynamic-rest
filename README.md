@@ -633,6 +633,10 @@ DYNAMIC_REST = {
     # Can be overriden at the viewset level.
     'MAX_PAGE_SIZE': None,
 
+    # PATCH_ALL_BATCH_SIZE: number of records loaded and saved at a time by a
+    # patch-all update. Must be a positive integer.
+    'PATCH_ALL_BATCH_SIZE': 500,
+
     # PAGE_QUERY_PARAM: global setting for the pagination query parameter.
     # Can be overriden at the viewset level.
     'PAGE_QUERY_PARAM': 'page',
