@@ -139,6 +139,10 @@ class DynamicFilterBackend(BaseFilterBackend):
     ) -> Q | None:
         """Construct Django Query object from request.
 
+        The filter{field} params (the inclusion and exclusion filters) and the
+        filter{} JSON object (the complex filters) are combined: everything
+        that was requested must match.
+
         Arguments are dictionaries, which will be passed to Q() as kwargs.
 
         e.g.
@@ -147,15 +151,13 @@ class DynamicFilterBackend(BaseFilterBackend):
             Q(foo='bar', baz__in=[1, 2])
 
         Arguments:
-          includes: TreeMap representing inclusion filters.
-          excludes: TreeMap representing exclusion filters.
-          filters: TreeMap with include/exclude filters OR query map
+          filters: TreeMap with the "_include" and "_exclude" filters from
+            filter{field} params and the "_complex" filter{} JSON object
           serializer: serializer instance of top-level object
           q: Q() object (optional)
 
         Returns:
-          Q() instance or None if no inclusion or exclusion filters
-          were specified.
+          Q() instance or None if no filters were specified.
         """
         complex_filters = filters.get("_complex")
         q = q or Q()
