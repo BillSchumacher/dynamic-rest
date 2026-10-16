@@ -533,6 +533,17 @@ You can filter a user by his name (exact match):
     200 OK
 ```
 
+... or pass a JSON object to `filter{}` for `.or` / `.and` conditions. Any `filter{field}` params in the same request are applied as well, and all of them must match:
+
+```
+-->
+    GET /users/?filter{}={".or":[{"name":"John"},{"name":"Joe"}]}&filter{-groups}=1
+<--
+    200 OK
+```
+
+Inside `.or` / `.and` (also spelled `$or` / `$and`), empty clauses (`{}`) are ignored. The list must hold at least one non-empty filter object, otherwise the request is rejected with a `400`. Every key of the object must match: a combinator can be combined with other keys (`{".or": [...], "-name": "John"}`) and with another combinator, and they are applied together.
+
 Write-only serializer fields are never rendered, but by default they can still be used in `filter{}` and `sort[]`, which lets a client work out their values. Set `PROTECT_WRITE_ONLY_FIELDS` (or `protect_write_only_fields` in a serializer's `Meta`) to reject them, in which case they are treated like unknown fields.
 
 The sky is the limit! DREST supports just about every basic filtering scenario and operator that you can use in Django:
