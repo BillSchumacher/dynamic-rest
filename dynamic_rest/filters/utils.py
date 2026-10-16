@@ -1,7 +1,8 @@
 """Filter utils."""
 from __future__ import annotations
 
-from django.db.models import Q, QuerySet
+from django.core.exceptions import FieldDoesNotExist
+from django.db.models import Max, Min, Q, QuerySet
 
 from dynamic_rest.compat import RestFrameworkBooleanField
 from dynamic_rest.constants import VALID_FILTER_OPERATORS
@@ -38,6 +39,98 @@ def has_joins(queryset: QuerySet) -> bool:
     return any(join.join_type for join in queryset.query.alias_map.values())
 
 
+def _is_multivalued(field) -> bool:
+    """Return True if following a relation field can match several rows."""
+    return (
+        field.one_to_many
+        or field.many_to_many
+        or not getattr(field, "requires_unique_target", True)
+    )
+
+
+def path_is_multivalued(model, path: str) -> bool:
+    """Return True if a lookup path crosses a multi-valued relation.
+
+    Arguments:
+        model: the model the path starts at.
+        path: a lookup path such as 'groups__name'.
+
+    Returns:
+        True if any relation along the path can match several rows. Once a
+        part is not a field of the model (a transform, an annotation) the
+        rest of the path is ignored.
+    """
+    for part in path.split("__"):
+        try:
+            field = model._meta.get_field(part)  # pylint: disable=protected-access
+        except FieldDoesNotExist:
+            return False
+        if not field.is_relation or field.related_model is None:
+            return False
+        if _is_multivalued(field):
+            return True
+        model = field.related_model
+    return False
+
+
+def default_ordering(queryset: QuerySet) -> tuple:
+    """Return the model's default ordering if it applies to a queryset.
+
+    The default ordering only applies when no ordering was requested.
+    """
+    query = queryset.query
+    if query.order_by or not query.default_ordering:
+        return ()
+    return tuple(query.get_meta().ordering or ())
+
+
+def ordering_is_multivalued(model, terms) -> bool:
+    """Return True if any ordering term crosses a multi-valued relation.
+
+    Ordering by an expression is not inspected.
+    """
+    return any(
+        path_is_multivalued(model, term.lstrip("-"))
+        for term in terms
+        if isinstance(term, str) and term != "?"
+    )
+
+
+def order_by_unique_rows(queryset: QuerySet, terms) -> QuerySet:
+    """Order a queryset without repeating rows.
+
+    Ordering by a column across a multi-valued relation joins to every
+    related row, which repeats the row once per related row, and DISTINCT
+    cannot remove them because the ordering column is part of the SELECT.
+    Such a term orders by the smallest related value instead (the largest
+    when descending), computed per row, so each row appears once.
+
+    Arguments:
+        queryset: the queryset to order.
+        terms: ordering terms as given to `order_by()`.
+
+    Returns:
+        The ordered queryset.
+    """
+    annotations = {}
+    ordering = []
+    for index, term in enumerate(terms):
+        if not isinstance(term, str) or term == "?":
+            ordering.append(term)
+            continue
+        descending = term.startswith("-")
+        path = term.lstrip("-")
+        if not path_is_multivalued(queryset.model, path):
+            ordering.append(term)
+            continue
+        alias = f"dynamic_rest_order_{index}"
+        annotations[alias] = (Max if descending else Min)(path)
+        ordering.append(f"-{alias}" if descending else alias)
+    if annotations:
+        queryset = queryset.annotate(**annotations)
+    return queryset.order_by(*ordering)
+
+
 def has_multivalued_joins(queryset: QuerySet) -> bool:
     """Return True iff. a queryset joins across a multi-valued relation.
 
@@ -58,7 +151,7 @@ def has_multivalued_joins(queryset: QuerySet) -> bool:
         if not join.join_type:
             continue
         join_field = getattr(join, "join_field", None)
-        if join_field is None or join_field.one_to_many or join_field.many_to_many:
+        if join_field is None or _is_multivalued(join_field):
             return True
     return False
 
