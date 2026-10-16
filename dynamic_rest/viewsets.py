@@ -21,9 +21,6 @@ from dynamic_rest.pagination import DynamicPageNumberPagination
 from dynamic_rest.processors import SideloadingProcessor
 from dynamic_rest.utils import is_truthy
 
-# Number of records loaded at a time when checking patch-all permissions.
-PATCH_ALL_PERMISSION_CHUNK_SIZE = 500
-
 UPDATE_REQUEST_METHODS = ("PUT", "PATCH", "POST")
 DELETE_REQUEST_METHOD = "DELETE"
 PATCH = "PATCH"
@@ -626,16 +623,34 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
         Raises the usual permission error for the first denied record, so
         nothing has been updated when a request is rejected.
 
+        Must run inside a transaction. The records of each batch are locked
+        before they are checked (on databases that support row locks), and
+        stay locked until the transaction ends, so they cannot be changed
+        between the check and the update.
+
         Returns:
             The primary keys of the records that were checked. The update
             must be limited to these, so a record that starts matching
             after the check cannot be updated without having been checked.
         """
-        checked = []
-        for record in queryset.iterator(chunk_size=PATCH_ALL_PERMISSION_CHUNK_SIZE):
-            self.check_object_permissions(self.request, record)
-            checked.append(record.pk)
-        return list(dict.fromkeys(checked))
+        batch_size = _get_patch_all_batch_size()
+        pks = list(dict.fromkeys(queryset.values_list("pk", flat=True)))
+        # pylint: disable-next=protected-access
+        manager = queryset.model._base_manager
+        for start in range(0, len(pks), batch_size):
+            batch = pks[start : start + batch_size]
+            # Evaluate the query so the rows are locked now. Ordering is
+            # cleared because locking cannot be combined with an ordering
+            # across a nullable join.
+            list(
+                manager.select_for_update()
+                .filter(pk__in=batch)
+                .order_by()
+                .values_list("pk", flat=True)
+            )
+            for record in queryset.filter(pk__in=batch):
+                self.check_object_permissions(self.request, record)
+        return pks
 
     def _patch_all(self, data, query=False):
         """Update all records in a queryset."""
@@ -652,10 +667,11 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
         with transaction.atomic():
             pks = self._check_patch_all_permissions(queryset)
             data = self._validate_patch_all(data)
+            batch_size = _get_patch_all_batch_size()
             updated = 0
-            for start in range(0, len(pks), PATCH_ALL_PERMISSION_CHUNK_SIZE):
-                chunk = pks[start : start + PATCH_ALL_PERMISSION_CHUNK_SIZE]
-                updated += update(queryset.filter(pk__in=chunk), data)
+            for start in range(0, len(pks), batch_size):
+                batch = pks[start : start + batch_size]
+                updated += update(queryset.filter(pk__in=batch), data)
         return Response({"meta": {"updated": updated}}, status=status.HTTP_200_OK)
 
     def update(self, request, *args, **kwargs):
@@ -677,9 +693,10 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
         of the same name) is enabled. In that case every record in the
         queryset is checked first, the whole request is rejected if any
         record is denied, and only the records that were checked are updated.
-        This loads every matching record, and calls the permission classes
-        once per record, so permission classes that query the database cost
-        one query per record.
+        The records are locked while they are checked, on databases that
+        support row locks. This loads every matching record, and calls the
+        permission classes once per record, so permission classes that query
+        the database cost one query per record.
 
         This parameter can have one of the following values:
 

@@ -5,6 +5,7 @@ from unittest import mock
 
 from django.core.exceptions import ImproperlyConfigured
 from django.db import connection
+from django.db.models import QuerySet
 from django.test import override_settings
 from django.test.client import RequestFactory
 from django.test.utils import CaptureQueriesContext
@@ -450,6 +451,43 @@ class PatchAllObjectPermissionsTestCase(TestCase):
         response = self._patch_all(data={"no_such_field": 1})
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_records_are_locked_before_they_are_checked_in_batches(self):
+        """Test each batch is locked, then checked, using the batch size setting."""
+        events = []
+        select_for_update = QuerySet.select_for_update
+
+        def record_lock(queryset, *args, **kwargs):
+            events.append("lock")
+            return select_for_update(queryset, *args, **kwargs)
+
+        def record_check(view, request, obj):
+            events.append("check")
+
+        with override_settings(DYNAMIC_REST={"PATCH_ALL_BATCH_SIZE": 2}):
+            with mock.patch.object(QuerySet, "select_for_update", record_lock):
+                with mock.patch.object(
+                    DogViewSet, "check_object_permissions", record_check
+                ):
+                    response = self._patch_all(
+                        permission_classes=[permissions.AllowAny]
+                    )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        num_dogs = Dog.objects.count()
+        self.assertEqual(num_dogs, events.count("check"))
+        self.assertEqual(-(-num_dogs // 2), events.count("lock"))
+        # a batch is locked before any of its records is checked
+        self.assertEqual("lock", events[0])
+        self.assertEqual(["lock", "check", "check"], events[:3])
+
+    def test_batch_size_setting_is_validated_when_checking_permissions(self):
+        """Test an invalid batch size is rejected before any record is checked."""
+        for value in (0, -1, "10", None):
+            with self.subTest(value=value):
+                with override_settings(DYNAMIC_REST={"PATCH_ALL_BATCH_SIZE": value}):
+                    with self.assertRaises(ImproperlyConfigured):
+                        self._patch_all(permission_classes=[permissions.AllowAny])
+        self.assertEqual(0, self._grey_count())
+
     def test_check_and_update_share_a_transaction(self):
         """Test a failure while updating a later batch undoes earlier ones."""
         Dog.objects.update(fur_color="red")
@@ -462,7 +500,7 @@ class PatchAllObjectPermissionsTestCase(TestCase):
                 raise exceptions.ValidationError("boom")
             return real_update(view, queryset, data)
 
-        with mock.patch("dynamic_rest.viewsets.PATCH_ALL_PERMISSION_CHUNK_SIZE", 2):
+        with override_settings(DYNAMIC_REST={"PATCH_ALL_BATCH_SIZE": 2}):
             with mock.patch.object(
                 DogViewSet, "_patch_all_query", fail_on_the_second_batch
             ):
