@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from django.core.exceptions import FieldDoesNotExist
 from django.db.models import Max, Min, Q, QuerySet
+from rest_framework.exceptions import ValidationError
 
 from dynamic_rest.compat import RestFrameworkBooleanField
 from dynamic_rest.constants import VALID_FILTER_OPERATORS
@@ -180,9 +181,44 @@ def rewrite_filters(
     return out
 
 
+def _is_scalar(value) -> bool:
+    """Return True if a JSON value is a string, number, boolean or null."""
+    return value is None or isinstance(value, (str, int, float, bool))
+
+
+def _check_clause_value(name: str, operator: str | None, value) -> None:
+    """Check that the value of a filter clause has the shape its operator needs.
+
+    Arguments:
+        name: the clause key, as the client wrote it, for the error message.
+        operator: the operator of the clause, or None for an exact match.
+        value: the value from the filter{} JSON object.
+
+    Raises:
+        ValidationError: if the value is not usable with the operator.
+    """
+    if operator == "in":
+        if not isinstance(value, list) or not all(_is_scalar(v) for v in value):
+            raise ValidationError(f'"{name}" expects a list of single values.')
+    elif operator == "range":
+        if (
+            not isinstance(value, list)
+            or len(value) != 2
+            or not all(_is_scalar(v) and v is not None for v in value)
+        ):
+            raise ValidationError(f'"{name}" expects two single values, neither null.')
+    elif operator == "isnull":
+        if not isinstance(value, bool):
+            raise ValidationError(f'"{name}" expects true or false.')
+    elif not _is_scalar(value):
+        hint = "" if operator else f' Use "{name}.in" to match several values.'
+        raise ValidationError(f'"{name}" expects a single value.{hint}')
+
+
 def clause_to_q(clause: tuple[str, str | int], serializer: DynamicModelSerializer) -> Q:
     """Convert a filter clause to a Django Q object."""
     key, value = clause
+    name = key.lstrip("-")
     negate = False
     if key.startswith("-"):
         negate = True
@@ -193,6 +229,7 @@ def clause_to_q(clause: tuple[str, str | int], serializer: DynamicModelSerialize
         operator = None
     node = FilterNode(parts, operator, value)
     key, _ = node.generate_query_key(serializer)
+    _check_clause_value(name, operator, value)
     q = Q(**{key: node.value})
     if negate:
         q = ~q
