@@ -59,10 +59,11 @@ class DynamicSortingFilter(OrderingFilter):
             queryset = order_by_unique_rows(queryset, ordering)
         else:
             queryset = queryset.order_by(*ordering)
-        if any("__" in o for o in ordering):
-            # add distinct() to remove duplicates
-            # in case of order-by-related
-            queryset = queryset.distinct()
+        # No distinct() here: ordering across a relation that can repeat rows
+        # is made unique above (DISTINCT could not do it, because the
+        # ordering column is part of the SELECT), the other relations cannot
+        # repeat rows, and duplicates from filters are handled by the filter
+        # backend.
         return queryset
 
     def get_ordering(
