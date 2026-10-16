@@ -10,6 +10,7 @@ from rest_framework.filters import OrderingFilter
 from rest_framework.request import Request
 from rest_framework.serializers import SerializerMetaclass
 
+from dynamic_rest.datastructures import get_filter_choices
 from dynamic_rest.fields import DynamicRelationField
 
 if TYPE_CHECKING:
@@ -57,7 +58,11 @@ class DynamicSortingFilter(OrderingFilter):
             # if any of the sort fields are invalid, throw an error.
             # else return the ordering
             if invalid_ordering:
-                raise ValidationError(f"Invalid filter field: {invalid_ordering}")
+                choices = ", ".join(self._get_choices(view))
+                raise ValidationError(
+                    f"Invalid filter field: {', '.join(invalid_ordering)}. "
+                    f"Choices are: {choices}."
+                )
             else:
                 return valid_ordering
 
@@ -131,6 +136,14 @@ class DynamicSortingFilter(OrderingFilter):
         model_chain.append(last_field.source or last_segment)
 
         return "__".join(model_chain)
+
+    def _get_choices(self, view: "DynamicModelViewSet") -> list[str]:
+        """Return the fields a client can sort on."""
+        valid_fields = getattr(view, "ordering_fields", self.ordering_fields)
+        if valid_fields is None or valid_fields == "__all__":
+            serializer = self._get_serializer_class(view)()
+            return get_filter_choices(serializer.get_all_fields())
+        return sorted(valid_fields)
 
     def _is_allowed_term(self, term: str, view: "DynamicModelViewSet") -> bool:
         """Check if a term is allowed to be ordered on."""

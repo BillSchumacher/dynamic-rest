@@ -426,6 +426,19 @@ class TestUsersAPI(TestCase):
         self.assertIn("display_name", message)
         self.assertNotIn("secret_column", message)
 
+    def test_sort_on_unknown_field_lists_serializer_choices(self):
+        """Test an unknown sort field is answered with the fields it can use."""
+        response = self.client.get("/users/?sort[]=name&sort[]=nope&sort[]=-bad")
+        self.assertEqual(400, response.status_code)
+        message = json.loads(response.content)[0]
+        prefix = "Invalid filter field: nope, -bad. Choices are: "
+        self.assertTrue(message.startswith(prefix), message)
+        choices = message[len(prefix) :].rstrip(".").split(", ")
+        self.assertEqual(sorted(choices), choices)
+        self.assertIn("name", choices)
+        for hidden in ("event", "favorite_pet_type", "number_of_cats"):
+            self.assertNotIn(hidden, choices)
+
     def test_get_with_filter_exclude(self):
         """Test get with filter exclude."""
         url = "/users/?filter{-name}=1"
@@ -1649,6 +1662,11 @@ class TestHorsesAPI(TestCase):
         # based off those fields. If a field is listed in the url that is not
         # specified, return a 400
         self.assertEqual(400, response.status_code)
+        # and say which fields can be used
+        self.assertEqual(
+            ["Invalid filter field: origin. Choices are: name."],
+            json.loads(response.content),
+        )
 
 
 class TestZebrasAPI(TestCase):
