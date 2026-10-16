@@ -545,7 +545,7 @@ The sky is the limit! DREST supports just about every basic filtering scenario a
 
 See the [full list here](dynamic_rest/filters.py#L153-L176).
 
-Filters across many-to-many or reverse relations (for example `filter{groups.name}=Home`) can match a row several times, so DREST applies `DISTINCT` to those queries. Filters that only follow forward foreign keys or one-to-one relations do not need it and are left alone. On large tables, `DISTINCT` combined with `count()` can be slow, so prefer `per_page` with the `exclude_count` query parameter when filtering across multi-valued relations.
+Filters across many-to-many or reverse relations (for example `filter{groups.name}=Home`) can match a row several times, so DREST applies `DISTINCT` to those queries. Filters that only follow forward foreign keys or one-to-one relations do not need it and are left alone, because Django requires the target of such a relation to be unique. A custom relation field that sets `requires_unique_target = False` gives no such guarantee, so `DISTINCT` is applied to filters across it as well. On large tables, `DISTINCT` combined with `count()` can be slow, so prefer `per_page` with the `exclude_count` query parameter when filtering across multi-valued relations.
 
 ## Ordering
 
@@ -568,6 +568,8 @@ For descending order, simply add a `-` sign. To sort by name in descending order
     200 OK
     ...
 ```
+
+When a sort field crosses a many-to-many or reverse relation, such as `groups.name` above, a record has several values to sort by. DREST orders it by its smallest value (its largest when descending), so each record is listed once. The same applies to a model's default `Meta.ordering` when it crosses such a relation and no `sort[]` is given. When records are updated or deleted, the ordering is ignored.
 
 ## Directory panel
 
