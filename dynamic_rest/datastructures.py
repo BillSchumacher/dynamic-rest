@@ -70,7 +70,9 @@ class FilterNode(object):
                 rewritten.append("pk")
                 continue
 
-            if field_name not in fields:
+            # Write-only fields are never rendered, so filtering on them would
+            # reveal their values. Treat them as if they did not exist.
+            if field_name not in fields or fields[field_name].write_only:
                 raise ValidationError(f"Invalid filter field: {field_name}")
 
             field = fields[field_name]

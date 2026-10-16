@@ -279,6 +279,19 @@ class UserLocationSerializer(UserSerializer):
     groups = DynamicRelationField("GroupSerializer", many=True, embed=True)
 
 
+class SecretDogSerializer(DynamicModelSerializer):
+    """Dog serializer with a write-only field."""
+
+    class Meta:
+        """Meta class."""
+
+        model = Dog
+        name = "secret_dog"
+        fields = ("id", "name", "fur")
+
+    fur = CharField(source="fur_color", write_only=True)
+
+
 class DogSerializer(DynamicModelSerializer):
     """Dog serializer."""
 

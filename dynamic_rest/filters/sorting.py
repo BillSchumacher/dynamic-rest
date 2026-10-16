@@ -115,6 +115,7 @@ class DynamicSortingFilter(OrderingFilter):
             if not (
                 field
                 and field.source != "*"
+                and not field.write_only
                 and isinstance(field, DynamicRelationField)
             ):
                 return None
@@ -128,7 +129,9 @@ class DynamicSortingFilter(OrderingFilter):
         last_segment = serializer_chain[-1]
         last_field = serializer.get_all_fields().get(last_segment)
 
-        if not last_field or last_field.source == "*":
+        # Write-only fields are never rendered, so ordering by them would
+        # reveal their values.
+        if not last_field or last_field.source == "*" or last_field.write_only:
             return None
 
         # Sources that span relations ('profile.display_name') use '.',
