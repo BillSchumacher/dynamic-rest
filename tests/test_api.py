@@ -513,6 +513,29 @@ class TestUsersAPI(TestCase):
         content = self._get_complex_filter({"id.range": ids[1:3]})
         self.assertEqual(ids[1:3], sorted(u["id"] for u in content["users"]))
 
+    def test_complex_filter_isnull_needs_a_boolean(self):
+        """Test isnull takes true or false, not another kind of value."""
+        for value in ("false", "true", "no", 0, 1, [True], {"a": 1}, None):
+            with self.subTest(value=value):
+                content = self._get_complex_filter(
+                    {"name.isnull": value}, expected_status=400
+                )
+                self.assertEqual(['"name.isnull" expects true or false.'], content)
+
+        content = self._get_complex_filter({"name.isnull": False})
+        self.assertEqual(len(self.fixture.users), len(content["users"]))
+        content = self._get_complex_filter({"name.isnull": True})
+        self.assertEqual([], content["users"])
+
+    def test_complex_filter_range_bounds_cannot_be_null(self):
+        """Test a range with a null bound is rejected."""
+        for value in ([None, 3], [1, None], [None, None]):
+            with self.subTest(value=value):
+                content = self._get_complex_filter(
+                    {"id.range": value}, expected_status=400
+                )
+                self.assertIn("expects two single values, neither null", content[0])
+
     def test_complex_filter_still_accepts_single_values(self):
         """Test strings, numbers, booleans and null are still valid values."""
         user = self.fixture.users[1]
@@ -536,14 +559,23 @@ class TestUsersAPI(TestCase):
                 self.assertEqual(["filter{} must be a JSON object."], content)
 
     def test_filter_with_range_operator(self):
-        """Test the range operator uses only the first two values."""
+        """Test the range operator takes exactly two values."""
         ids = sorted(user.pk for user in self.fixture.users)
-        url = (
-            f"/users/?filter{{id.range}}={ids[1]}"
-            f"&filter{{id.range}}={ids[2]}&filter{{id.range}}={ids[3]}"
-        )
+        url = f"/users/?filter{{id.range}}={ids[1]}&filter{{id.range}}={ids[2]}"
         content = self._get_json(url)
         self.assertEqual(ids[1:3], sorted(user["id"] for user in content["users"]))
+
+    def test_filter_with_range_operator_needs_two_values(self):
+        """Test a range with one or three values is rejected, not guessed."""
+        ids = sorted(user.pk for user in self.fixture.users)
+        for query in (
+            f"filter{{id.range}}={ids[1]}",
+            f"filter{{id.range}}={ids[1]}&filter{{id.range}}={ids[2]}"
+            f"&filter{{id.range}}={ids[3]}",
+        ):
+            with self.subTest(query=query):
+                content = self._get_json(f"/users/?{query}", expected_status=400)
+                self.assertEqual(["The range operator expects two values."], content)
 
     def test_invalid_filter_does_not_expose_model_internals(self):
         """Test a rejected filter returns a generic message and logs the cause."""

@@ -204,9 +204,12 @@ def _check_clause_value(name: str, operator: str | None, value) -> None:
         if (
             not isinstance(value, list)
             or len(value) != 2
-            or not all(_is_scalar(v) for v in value)
+            or not all(_is_scalar(v) and v is not None for v in value)
         ):
-            raise ValidationError(f'"{name}" expects two single values.')
+            raise ValidationError(f'"{name}" expects two single values, neither null.')
+    elif operator == "isnull":
+        if not isinstance(value, bool):
+            raise ValidationError(f'"{name}" expects true or false.')
     elif not _is_scalar(value):
         hint = "" if operator else f' Use "{name}.in" to match several values.'
         raise ValidationError(f'"{name}" expects a single value.{hint}')

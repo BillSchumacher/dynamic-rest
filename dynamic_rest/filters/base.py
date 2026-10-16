@@ -75,7 +75,8 @@ def _get_requested_filters(view, **kwargs) -> TreeMap:
 
         # All operators except 'range' and 'in' should have one value
         if operator == "range":
-            value = value[:2]
+            if len(value) != 2:
+                raise ValidationError("The range operator expects two values.")
         elif operator == "in":
             # no-op: i.e. accept `value` as an arbitrarily long list
             pass
