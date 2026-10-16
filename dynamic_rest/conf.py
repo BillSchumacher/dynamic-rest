@@ -25,10 +25,18 @@ DYNAMIC_REST = {
     "ENABLE_BULK_PARTIAL_CREATION": False,
     # ENABLE_BULK_UPDATE: enable/disable update in bulk
     "ENABLE_BULK_UPDATE": False,
+    # PATCH_ALL_CHECK_OBJECT_PERMISSIONS: when True, a patch-all update checks
+    # the object-level permissions of every record in the queryset before
+    # updating any of them, and is rejected if any record is denied. By
+    # default patch-all only relies on the viewset's queryset and
+    # view-level permissions, so enable this if your permissions depend on
+    # the individual record. Can be overridden at the viewset level.
+    "PATCH_ALL_CHECK_OBJECT_PERMISSIONS": False,
     # ENABLE_PATCH_ALL: enable/disable patch by queryset
     "ENABLE_PATCH_ALL": False,
     # PATCH_ALL_BATCH_SIZE: number of records loaded and saved at a time by
-    # a patch-all update. Must be a positive integer.
+    # a patch-all update, and checked at a time when object permissions are
+    # checked. Must be a positive integer.
     "PATCH_ALL_BATCH_SIZE": 500,
     # DEFER_MANY_RELATIONS: automatically defer many-relations, unless
     # `deferred=False` is explicitly set on the field.

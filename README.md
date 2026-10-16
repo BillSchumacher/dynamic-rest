@@ -624,8 +624,19 @@ DYNAMIC_REST = {
     # Can be overriden at the viewset level.
     'MAX_PAGE_SIZE': None,
 
+    # PATCH_ALL_CHECK_OBJECT_PERMISSIONS: check the object-level permissions of
+    # every record in a patch-all update, and reject the request if any is
+    # denied. Patch-all only relies on the queryset and view-level permissions
+    # by default, so enable this if your permissions depend on the individual
+    # record. Every matching record is loaded and checked, so permission
+    # classes that query the database cost one query per record. The records
+    # are locked while they are checked, on databases that support row locks.
+    # Can be overriden at the viewset level.
+    'PATCH_ALL_CHECK_OBJECT_PERMISSIONS': False,
+
     # PATCH_ALL_BATCH_SIZE: number of records loaded and saved at a time by a
-    # patch-all update. Must be a positive integer.
+    # patch-all update, and checked at a time when object permissions are
+    # checked. Must be a positive integer.
     'PATCH_ALL_BATCH_SIZE': 500,
 
     # PAGE_QUERY_PARAM: global setting for the pagination query parameter.

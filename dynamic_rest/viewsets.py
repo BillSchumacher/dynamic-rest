@@ -489,6 +489,7 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
     ENABLE_BULK_PARTIAL_CREATION = settings.ENABLE_BULK_PARTIAL_CREATION
     ENABLE_BULK_UPDATE = settings.ENABLE_BULK_UPDATE
     ENABLE_PATCH_ALL = settings.ENABLE_PATCH_ALL
+    PATCH_ALL_CHECK_OBJECT_PERMISSIONS = settings.PATCH_ALL_CHECK_OBJECT_PERMISSIONS
 
     def _get_bulk_payload(self, request):
         """Get bulk payload from request."""
@@ -616,15 +617,61 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
                 "The update violates a data integrity constraint."
             ) from e
 
+    def _check_patch_all_permissions(self, queryset):
+        """Check object-level permissions for every record in a queryset.
+
+        Raises the usual permission error for the first denied record, so
+        nothing has been updated when a request is rejected.
+
+        Must run inside a transaction. The records of each batch are locked
+        before they are checked (on databases that support row locks), and
+        stay locked until the transaction ends, so they cannot be changed
+        between the check and the update.
+
+        Returns:
+            The primary keys of the records that were checked. The update
+            must be limited to these, so a record that starts matching
+            after the check cannot be updated without having been checked.
+        """
+        batch_size = _get_patch_all_batch_size()
+        pks = list(dict.fromkeys(queryset.values_list("pk", flat=True)))
+        # pylint: disable-next=protected-access
+        manager = queryset.model._base_manager
+        for start in range(0, len(pks), batch_size):
+            batch = pks[start : start + batch_size]
+            # Evaluate the query so the rows are locked now. Ordering is
+            # cleared because locking cannot be combined with an ordering
+            # across a nullable join.
+            list(
+                manager.select_for_update()
+                .filter(pk__in=batch)
+                .order_by()
+                .values_list("pk", flat=True)
+            )
+            for record in queryset.filter(pk__in=batch):
+                self.check_object_permissions(self.request, record)
+        return pks
+
     def _patch_all(self, data, query=False):
         """Update all records in a queryset."""
         queryset = self.filter_queryset(self.get_queryset())
-        data = self._validate_patch_all(data)
-        updated = (
-            self._patch_all_query(queryset, data)
-            if query
-            else self._patch_all_loop(queryset, data)
-        )
+        update = self._patch_all_query if query else self._patch_all_loop
+
+        if not self.PATCH_ALL_CHECK_OBJECT_PERMISSIONS:
+            data = self._validate_patch_all(data)
+            updated = update(queryset, data)
+            return Response({"meta": {"updated": updated}}, status=status.HTTP_200_OK)
+
+        # Check permissions and update in one transaction, and only update
+        # the records that were checked.
+        with transaction.atomic():
+            pks = self._check_patch_all_permissions(queryset)
+            data = self._validate_patch_all(data)
+            batch_size = _get_patch_all_batch_size()
+            updated = 0
+            for start in range(0, len(pks), batch_size):
+                batch = pks[start : start + batch_size]
+                updated += update(queryset.filter(pk__in=batch), data)
         return Response({"meta": {"updated": updated}}, status=status.HTTP_200_OK)
 
     def update(self, request, *args, **kwargs):
@@ -640,6 +687,16 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
         and used with caution. This feature must be enabled at the viewset level
         and must also be requested explicitly by the client
         via the "patch-all" query parameter.
+
+        Patch-all does not check object-level permissions unless the
+        PATCH_ALL_CHECK_OBJECT_PERMISSIONS setting (or the viewset attribute
+        of the same name) is enabled. In that case every record in the
+        queryset is checked first, the whole request is rejected if any
+        record is denied, and only the records that were checked are updated.
+        The records are locked while they are checked, on databases that
+        support row locks. This loads every matching record, and calls the
+        permission classes once per record, so permission classes that query
+        the database cost one query per record.
 
         This parameter can have one of the following values:
 

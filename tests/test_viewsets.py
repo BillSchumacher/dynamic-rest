@@ -1,14 +1,17 @@
 """Tests for viewsets."""
 import json
 import os
+from unittest import mock
 
 from django.core.exceptions import ImproperlyConfigured
 from django.db import connection
+from django.db.models import QuerySet
 from django.test import override_settings
 from django.test.client import RequestFactory
 from django.test.utils import CaptureQueriesContext
-from rest_framework import exceptions, status
+from rest_framework import exceptions, permissions, status
 from rest_framework.request import Request
+from rest_framework.test import APIRequestFactory
 
 from dynamic_rest.datastructures import FilterNode
 from dynamic_rest.filters import DynamicFilterBackend
@@ -16,7 +19,7 @@ from dynamic_rest.filters.base import _get_requested_filters
 from tests.models import Dog, Group, User
 from tests.serializers import GroupSerializer
 from tests.setup import create_fixture
-from tests.viewsets import GroupNoMergeDictViewSet, UserViewSet
+from tests.viewsets import DogViewSet, GroupNoMergeDictViewSet, UserViewSet
 
 if os.getenv("DATABASE_URL"):
     from tests.test_cases import ResetTestCase as TestCase
@@ -323,6 +326,188 @@ class BulkUpdateTestCase(TestCase):
                             content_type="application/json",
                         )
         self.assertEqual(0, Dog.objects.filter(fur_color="grey").count())
+
+
+class DenyBrownDogs(permissions.BasePermission):
+    """Object-level permission that denies dogs with brown fur."""
+
+    def has_object_permission(self, request, view, obj):
+        """Deny brown dogs."""
+        return "brown" not in obj.fur_color
+
+
+class PatchAllObjectPermissionsTestCase(TestCase):
+    """Test case for object-level permission checks in patch-all."""
+
+    def setUp(self):
+        """Set up test case."""
+        self.fixture = create_fixture()
+        self.factory = APIRequestFactory()
+
+    def _patch_all(
+        self,
+        query="true",
+        filters="",
+        permission_classes=None,
+        check=True,
+        data=None,
+        **view_kwargs,
+    ):
+        """Send a patch-all request straight to the dog viewset."""
+        view = DogViewSet.as_view(
+            {"patch": "update"},
+            permission_classes=permission_classes or [DenyBrownDogs],
+            PATCH_ALL_CHECK_OBJECT_PERMISSIONS=check,
+            **view_kwargs,
+        )
+        request = self.factory.patch(
+            f"/dogs/?patch-all={query}{filters}",
+            {"fur": "grey"} if data is None else data,
+            format="json",
+        )
+        return view(request)
+
+    def _grey_count(self):
+        return Dog.objects.filter(fur_color="grey").count()
+
+    def test_option_is_off_by_default(self):
+        """Test viewsets do not check object permissions unless told to."""
+        self.assertFalse(DogViewSet.PATCH_ALL_CHECK_OBJECT_PERMISSIONS)
+
+    def test_object_permissions_are_not_checked_when_disabled(self):
+        """Test patch-all keeps updating every record in the queryset."""
+        for query in ("true", "query"):
+            with self.subTest(query=query):
+                Dog.objects.update(fur_color="red")
+                response = self._patch_all(query=query, check=False)
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                self.assertEqual(Dog.objects.count(), self._grey_count())
+
+    def test_denied_object_rejects_the_whole_update(self):
+        """Test one denied record rejects the request and updates nothing."""
+        for query in ("true", "query"):
+            with self.subTest(query=query):
+                before = dict(Dog.objects.values_list("pk", "fur_color"))
+                response = self._patch_all(query=query)
+                self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+                self.assertEqual(
+                    before, dict(Dog.objects.values_list("pk", "fur_color"))
+                )
+
+    def test_allowed_objects_are_updated(self):
+        """Test a request that only matches permitted records succeeds."""
+        for query in ("true", "query"):
+            with self.subTest(query=query):
+                Dog.objects.update(fur_color="red")
+                Dog.objects.filter(name="Spike").update(fur_color="brown")
+                response = self._patch_all(query=query, filters="&filter{fur}=red")
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                self.assertEqual(
+                    Dog.objects.exclude(name="Spike").count(), self._grey_count()
+                )
+                self.assertEqual(self._grey_count(), response.data["meta"]["updated"])
+
+    def test_each_matching_object_is_checked_once(self):
+        """Test the permission check runs once per record in the queryset."""
+        with mock.patch.object(
+            DogViewSet, "check_object_permissions"
+        ) as check_object_permissions:
+            response = self._patch_all(permission_classes=[permissions.AllowAny])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(Dog.objects.count(), check_object_permissions.call_count)
+
+    def test_records_that_appear_after_the_check_are_not_updated(self):
+        """Test only the records that were checked are updated."""
+        original = DogViewSet._check_patch_all_permissions
+
+        def check_then_add_a_record(view, queryset):
+            checked = original(view, queryset)
+            # another request creates a record the check never saw
+            Dog.objects.create(name="Late", fur_color="brown", origin="x")
+            return checked
+
+        for query in ("true", "query"):
+            with self.subTest(query=query):
+                Dog.objects.filter(name="Late").delete()
+                Dog.objects.update(fur_color="red")
+                with mock.patch.object(
+                    DogViewSet,
+                    "_check_patch_all_permissions",
+                    check_then_add_a_record,
+                ):
+                    response = self._patch_all(query=query)
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                self.assertEqual("brown", Dog.objects.get(name="Late").fur_color)
+                self.assertEqual(
+                    Dog.objects.exclude(name="Late").count(), self._grey_count()
+                )
+
+    def test_permissions_are_checked_before_the_payload_is_validated(self):
+        """Test a denied request does not learn anything from validation."""
+        response = self._patch_all(data={"no_such_field": 1})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        Dog.objects.update(fur_color="red")
+        response = self._patch_all(data={"no_such_field": 1})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_records_are_locked_before_they_are_checked_in_batches(self):
+        """Test each batch is locked, then checked, using the batch size setting."""
+        events = []
+        select_for_update = QuerySet.select_for_update
+
+        def record_lock(queryset, *args, **kwargs):
+            events.append("lock")
+            return select_for_update(queryset, *args, **kwargs)
+
+        def record_check(view, request, obj):
+            events.append("check")
+
+        with override_settings(DYNAMIC_REST={"PATCH_ALL_BATCH_SIZE": 2}):
+            with mock.patch.object(QuerySet, "select_for_update", record_lock):
+                with mock.patch.object(
+                    DogViewSet, "check_object_permissions", record_check
+                ):
+                    response = self._patch_all(
+                        permission_classes=[permissions.AllowAny]
+                    )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        num_dogs = Dog.objects.count()
+        self.assertEqual(num_dogs, events.count("check"))
+        self.assertEqual(-(-num_dogs // 2), events.count("lock"))
+        # a batch is locked before any of its records is checked
+        self.assertEqual("lock", events[0])
+        self.assertEqual(["lock", "check", "check"], events[:3])
+
+    def test_batch_size_setting_is_validated_when_checking_permissions(self):
+        """Test an invalid batch size is rejected before any record is checked."""
+        for value in (0, -1, "10", None):
+            with self.subTest(value=value):
+                with override_settings(DYNAMIC_REST={"PATCH_ALL_BATCH_SIZE": value}):
+                    with self.assertRaises(ImproperlyConfigured):
+                        self._patch_all(permission_classes=[permissions.AllowAny])
+        self.assertEqual(0, self._grey_count())
+
+    def test_check_and_update_share_a_transaction(self):
+        """Test a failure while updating a later batch undoes earlier ones."""
+        Dog.objects.update(fur_color="red")
+        real_update = DogViewSet._patch_all_query
+        calls = []
+
+        def fail_on_the_second_batch(view, queryset, data):
+            calls.append(queryset)
+            if len(calls) == 2:
+                raise exceptions.ValidationError("boom")
+            return real_update(view, queryset, data)
+
+        with override_settings(DYNAMIC_REST={"PATCH_ALL_BATCH_SIZE": 2}):
+            with mock.patch.object(
+                DogViewSet, "_patch_all_query", fail_on_the_second_batch
+            ):
+                response = self._patch_all(query="query")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(2, len(calls))
+        self.assertEqual(0, self._grey_count())
 
 
 class BulkCreationTestCase(TestCase):
