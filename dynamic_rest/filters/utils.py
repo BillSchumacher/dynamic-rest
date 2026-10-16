@@ -26,6 +26,9 @@ def has_joins(queryset: QuerySet) -> bool:
     If this is the case, it is possible for the queryset
     to return duplicate results.
 
+    Superseded by `has_multivalued_joins`, which only reports joins that
+    can actually repeat rows. Kept for backwards compatibility.
+
     Arguments:
         queryset: A queryset.
 
@@ -33,6 +36,31 @@ def has_joins(queryset: QuerySet) -> bool:
         True if the queryset includes joins.
     """
     return any(join.join_type for join in queryset.query.alias_map.values())
+
+
+def has_multivalued_joins(queryset: QuerySet) -> bool:
+    """Return True iff. a queryset joins across a multi-valued relation.
+
+    Only joins that can match several rows per row of the base table
+    (many-to-many and reverse foreign key / generic relations) can make
+    the queryset return duplicate results. Joins that follow a forward
+    foreign key or a one-to-one relation cannot.
+
+    A join that cannot be classified is treated as multi-valued.
+
+    Arguments:
+        queryset: A queryset.
+
+    Returns:
+        True if the queryset can return duplicate results.
+    """
+    for join in queryset.query.alias_map.values():
+        if not join.join_type:
+            continue
+        join_field = getattr(join, "join_field", None)
+        if join_field is None or join_field.one_to_many or join_field.many_to_many:
+            return True
+    return False
 
 
 def rewrite_filters(

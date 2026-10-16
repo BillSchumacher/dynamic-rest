@@ -12,6 +12,7 @@ from rest_framework.serializers import SerializerMetaclass
 
 from dynamic_rest.datastructures import get_filter_choices
 from dynamic_rest.fields import DynamicRelationField
+from dynamic_rest.meta import get_lookup_path
 
 if TYPE_CHECKING:
     from dynamic_rest.viewsets import DynamicModelViewSet
@@ -123,7 +124,9 @@ class DynamicSortingFilter(OrderingFilter):
             ):
                 return None
 
-            model_chain.append(field.source or segment)
+            model_chain.append(
+                get_lookup_path(serializer.get_model(), field.source or segment)
+            )
 
             serializer = field.serializer_class()
 
@@ -133,7 +136,11 @@ class DynamicSortingFilter(OrderingFilter):
         if not last_field or last_field.source == "*":
             return None
 
-        model_chain.append(last_field.source or last_segment)
+        # Sources that span relations ('profile.display_name') use '.',
+        # but the ORM expects '__'.
+        model_chain.append(
+            get_lookup_path(serializer.get_model(), last_field.source or last_segment)
+        )
 
         return "__".join(model_chain)
 
