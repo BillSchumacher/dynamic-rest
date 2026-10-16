@@ -279,6 +279,50 @@ class UserLocationSerializer(UserSerializer):
     groups = DynamicRelationField("GroupSerializer", many=True, embed=True)
 
 
+class SecretDogSerializer(DynamicModelSerializer):
+    """Dog serializer with a write-only field."""
+
+    class Meta:
+        """Meta class."""
+
+        model = Dog
+        name = "secret_dog"
+        fields = ("id", "name", "fur")
+
+    fur = CharField(source="fur_color", write_only=True)
+
+
+class SecretUserSerializer(DynamicModelSerializer):
+    """User serializer with a write-only field."""
+
+    class Meta:
+        """Meta class."""
+
+        model = User
+        name = "secret_user"
+        fields = ("id", "name", "last_name")
+
+    last_name = CharField(write_only=True)
+
+
+class SecretLocationSerializer(DynamicModelSerializer):
+    """Location serializer with a relation to users that have a write-only field."""
+
+    class Meta:
+        """Meta class."""
+
+        model = Location
+        name = "secret_location"
+        fields = ("id", "name", "users")
+
+    users = DynamicRelationField(
+        "tests.serializers.SecretUserSerializer",
+        source="user_set",
+        many=True,
+        deferred=True,
+    )
+
+
 class DogSerializer(DynamicModelSerializer):
     """Dog serializer."""
 

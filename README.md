@@ -544,6 +544,8 @@ You can filter a user by his name (exact match):
 
 Inside `.or` / `.and` (also spelled `$or` / `$and`), empty clauses (`{}`) are ignored. The list must hold at least one non-empty filter object, otherwise the request is rejected with a `400`. Every key of the object must match: a combinator can be combined with other keys (`{".or": [...], "-name": "John"}`) and with another combinator, and they are applied together.
 
+Write-only serializer fields are never rendered, but by default they can still be used in `filter{}` and `sort[]`, which lets a client work out their values. Set `PROTECT_WRITE_ONLY_FIELDS` (or `protect_write_only_fields` in a serializer's `Meta`) to reject them, in which case they are treated like unknown fields.
+
 The sky is the limit! DREST supports just about every basic filtering scenario and operator that you can use in Django:
 
 -   in
@@ -630,6 +632,13 @@ DYNAMIC_REST = {
     # DEFER_MANY_RELATIONS: automatically defer many-relations, unless
     # `deferred=False` is explicitly set on the field.
     'DEFER_MANY_RELATIONS': False,
+
+    # PROTECT_WRITE_ONLY_FIELDS: when True, write-only serializer fields cannot
+    # be used in filter{} or sort[], because filtering or sorting on a field
+    # that is never rendered reveals its values. Off by default for backwards
+    # compatibility. A serializer can override it with
+    # `protect_write_only_fields` in its Meta class.
+    'PROTECT_WRITE_ONLY_FIELDS': False,
 
     # MAX_PAGE_SIZE: global setting for max page size.
     # Can be overriden at the viewset level.

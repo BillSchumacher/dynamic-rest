@@ -10,7 +10,7 @@ from rest_framework.filters import OrderingFilter
 from rest_framework.request import Request
 from rest_framework.serializers import SerializerMetaclass
 
-from dynamic_rest.datastructures import get_filter_choices
+from dynamic_rest.datastructures import get_filter_choices, protects_write_only_fields
 from dynamic_rest.fields import DynamicRelationField
 from dynamic_rest.meta import get_lookup_path
 
@@ -120,6 +120,7 @@ class DynamicSortingFilter(OrderingFilter):
             if not (
                 field
                 and field.source != "*"
+                and not (field.write_only and protects_write_only_fields(serializer))
                 and isinstance(field, DynamicRelationField)
             ):
                 return None
@@ -134,6 +135,11 @@ class DynamicSortingFilter(OrderingFilter):
         last_field = serializer.get_all_fields().get(last_segment)
 
         if not last_field or last_field.source == "*":
+            return None
+
+        # When write-only fields are protected, they cannot be ordered by:
+        # they are never rendered, so this would reveal their values.
+        if last_field.write_only and protects_write_only_fields(serializer):
             return None
 
         # Sources that span relations ('profile.display_name') use '.',

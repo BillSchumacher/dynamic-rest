@@ -153,6 +153,8 @@ class WithDynamicSerializerMixin(
         - immutable_fields - list of strings
         - read_only_fields - list of strings
         - untrimmed_fields - list of strings
+        - protect_write_only_fields - bool, overrides the
+          PROTECT_WRITE_ONLY_FIELDS setting for this serializer
     """
 
     ENABLE_FIELDS_CACHE = False

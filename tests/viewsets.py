@@ -24,6 +24,8 @@ from tests.serializers import (
     LocationSerializer,
     PermissionSerializer,
     ProfileSerializer,
+    SecretDogSerializer,
+    SecretLocationSerializer,
     UserLocationSerializer,
     UserSerializer,
     ZebraSerializer,
@@ -167,6 +169,22 @@ class CatViewSet(DynamicModelViewSet):
 
     serializer_class = CatSerializer
     queryset = Cat.objects.all()
+
+
+class SecretDogViewSet(DynamicModelViewSet):
+    """Dog viewset whose serializer has a write-only field."""
+
+    model = Dog
+    serializer_class = SecretDogSerializer
+    queryset = Dog.objects.all()
+
+
+class SecretLocationViewSet(DynamicModelViewSet):
+    """Location viewset whose users have a write-only field."""
+
+    model = Location
+    serializer_class = SecretLocationSerializer
+    queryset = Location.objects.all()
 
 
 class DogViewSet(DynamicModelViewSet):
