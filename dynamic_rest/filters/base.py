@@ -140,6 +140,10 @@ class DynamicFilterBackend(BaseFilterBackend):
     ) -> Q | None:
         """Construct Django Query object from request.
 
+        The filter{field} params (the inclusion and exclusion filters) and the
+        filter{} JSON object (the complex filters) are combined: everything
+        that was requested must match.
+
         Arguments are dictionaries, which will be passed to Q() as kwargs.
 
         e.g.
@@ -148,50 +152,80 @@ class DynamicFilterBackend(BaseFilterBackend):
             Q(foo='bar', baz__in=[1, 2])
 
         Arguments:
-          includes: TreeMap representing inclusion filters.
-          excludes: TreeMap representing exclusion filters.
-          filters: TreeMap with include/exclude filters OR query map
+          filters: TreeMap with the "_include" and "_exclude" filters from
+            filter{field} params and the "_complex" filter{} JSON object
           serializer: serializer instance of top-level object
           q: Q() object (optional)
 
         Returns:
-          Q() instance or None if no inclusion or exclusion filters
-          were specified.
+          Q() instance or None if no filters were specified.
         """
         complex_filters = filters.get("_complex")
         q = q or Q()
+        includes = filters.get("_include")
+        excludes = filters.get("_exclude")
+
+        if includes:
+            includes = rewrite_filters(includes, serializer)
+            q &= Q(**includes)
+        if excludes:
+            excludes = rewrite_filters(excludes, serializer)
+            for k, v in excludes.items():
+                q &= ~Q(**{k: v})
+
         if not complex_filters:
-            includes = filters.get("_include")
-            excludes = filters.get("_exclude")
+            return q if includes or excludes else None
 
-            if not includes and not excludes:
-                return None
+        # filter{field} params and the filter{} JSON object are combined.
+        return q & self._complex_filters_to_query(complex_filters, serializer)
 
-            if includes:
-                includes = rewrite_filters(includes, serializer)
-                q &= Q(**includes)
-            if excludes:
-                excludes = rewrite_filters(excludes, serializer)
-                for k, v in excludes.items():
-                    q &= ~Q(**{k: v})
-            return q
+    def _combine_clauses(self, clauses, combine, name: str, serializer) -> Q:
+        """Combine the clauses of an .and / .or filter into one query.
 
-        filters = complex_filters
+        Empty clauses are skipped. At least one non-empty clause is required.
+        """
+        if not isinstance(clauses, list) or not all(
+            isinstance(clause, dict) for clause in clauses
+        ):
+            raise ValidationError(f"{name} must be a list of filter objects.")
 
-        if ors := filters.get(".or") or filters.get("$or"):
-            return reduce(
-                _or,
-                [self._filters_to_query({"_complex": f}, serializer) for f in ors],
+        queries = [
+            query
+            for query in (
+                self._filters_to_query({"_complex": clause}, serializer)
+                for clause in clauses
             )
+            if query
+        ]
+        if not queries:
+            raise ValidationError(f"{name} must contain at least one filter.")
+        return reduce(combine, queries)
 
-        if ands := filters.get(".and") or filters.get("$and"):
-            return reduce(
-                _and,
-                [self._filters_to_query({"_complex": f}, serializer) for f in ands],
-            )
+    def _complex_filters_to_query(self, filters: dict, serializer) -> Q:
+        """Construct Django Query object from a filter{} JSON object."""
+        if not isinstance(filters, dict):
+            raise ValidationError("filter{} must be a JSON object.")
 
-        clauses = [clause_to_q(clause, serializer) for clause in filters.items()]
-        return reduce(_and, clauses) if clauses else q
+        combinators = (
+            (".or", _or),
+            ("$or", _or),
+            (".and", _and),
+            ("$and", _and),
+        )
+        # Everything in the object must match: each combinator, and every
+        # other key next to them.
+        clauses = [
+            self._combine_clauses(filters[name], combine, name, serializer)
+            for name, combine in combinators
+            if name in filters
+        ]
+        names = {name for name, _ in combinators}
+        clauses.extend(
+            clause_to_q(clause, serializer)
+            for clause in filters.items()
+            if clause[0] not in names
+        )
+        return reduce(_and, clauses) if clauses else Q()
 
     def _create_prefetch(self, source: str, queryset: QuerySet) -> Prefetch:
         """Create a Prefetch object."""
