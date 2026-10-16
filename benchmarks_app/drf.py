@@ -97,6 +97,8 @@ class UserWithAllViewSet(viewsets.ModelViewSet):
 # DRF routing
 
 router = routers.DefaultRouter()
-router.register(r"drf/users", UserWithGroupsViewSet)
-router.register(r"drf/users_with_groups", UserWithGroupsViewSet)
-router.register(r"drf/users_with_all", UserWithAllViewSet)
+router.register(r"drf/users", UserViewSet, basename="drf-user")
+router.register(
+    r"drf/users_with_groups", UserWithGroupsViewSet, basename="drf-user-with-groups"
+)
+router.register(r"drf/users_with_all", UserWithAllViewSet, basename="drf-user-with-all")
