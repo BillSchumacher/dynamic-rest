@@ -397,32 +397,35 @@ class TestUsersAPI(TestCase):
 
     def test_complex_filter_rejects_lists_without_a_usable_clause(self):
         """Test .and / .or need at least one non-empty clause."""
-        for filters in (
-            {".and": [{}]},
-            {".or": [{}]},
-            {".and": []},
-            {".or": []},
-            {".and": [{".or": [{}]}]},
+        for filters, name in (
+            ({".and": [{}]}, ".and"),
+            ({".or": [{}]}, ".or"),
+            ({"$and": []}, "$and"),
+            ({"$or": []}, "$or"),
+            ({".and": [{".or": [{}]}]}, ".or"),
         ):
             with self.subTest(filters=filters):
-                self._get_complex_filter(filters, expected_status=400)
+                content = self._get_complex_filter(filters, expected_status=400)
+                self.assertEqual([f"{name} must contain at least one filter."], content)
 
     def test_complex_filter_rejects_malformed_clauses(self):
         """Test .and / .or must hold a list of objects."""
-        for filters in (
-            {".and": {"name": "1"}},
-            {".or": "name"},
-            {".or": ["name"]},
-            {".and": [["name", "1"]]},
+        for filters, name in (
+            ({".and": {"name": "1"}}, ".and"),
+            ({".or": "name"}, ".or"),
+            ({"$or": ["name"]}, "$or"),
+            ({"$and": [["name", "1"]]}, "$and"),
         ):
             with self.subTest(filters=filters):
-                self._get_complex_filter(filters, expected_status=400)
+                content = self._get_complex_filter(filters, expected_status=400)
+                self.assertEqual([f"{name} must be a list of filter objects."], content)
 
     def test_complex_filter_must_be_an_object(self):
         """Test a filter{} value that is not an object is rejected."""
         for filters in ([{"name": "1"}], "name", 1):
             with self.subTest(filters=filters):
-                self._get_complex_filter(filters, expected_status=400)
+                content = self._get_complex_filter(filters, expected_status=400)
+                self.assertEqual(["filter{} must be a JSON object."], content)
 
     def test_filter_with_range_operator(self):
         """Test the range operator uses only the first two values."""
