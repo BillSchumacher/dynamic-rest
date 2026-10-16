@@ -2,8 +2,10 @@
 import datetime
 import json
 import os
+from unittest import mock
 from urllib.parse import quote, quote_plus
 
+from django.core.exceptions import FieldError
 from django.db import connection
 from django.test import override_settings
 from django.test.utils import CaptureQueriesContext
@@ -365,6 +367,78 @@ class TestUsersAPI(TestCase):
             },
             json.loads(response.content.decode("utf-8")),
         )
+
+    def test_invalid_filter_does_not_expose_model_internals(self):
+        """Test a rejected filter returns a generic message and logs the cause."""
+        with self.assertLogs("dynamic_rest.filters.base", level="DEBUG") as logs:
+            response = self.client.get("/users/?filter{name.year}=2020")
+        self.assertEqual(400, response.status_code)
+        self.assertEqual(["Invalid filter."], json.loads(response.content))
+        output = "\n".join(logs.output)
+        self.assertIn("WARNING:dynamic_rest.filters.base:Invalid filter:", output)
+        self.assertIn("FieldError", output)
+        # the traceback is available when debugging
+        self.assertIn("Traceback", output)
+
+    def test_invalid_filter_value_does_not_expose_model_internals(self):
+        """Test a rejected filter value returns a generic message and logs it."""
+        with self.assertLogs("dynamic_rest.filters.base", level="WARNING") as logs:
+            response = self.client.get("/users/?filter{id}=abc")
+        self.assertEqual(400, response.status_code)
+        self.assertEqual(["Invalid filter value."], json.loads(response.content))
+        output = "\n".join(logs.output)
+        self.assertIn("Invalid filter value:", output)
+        self.assertIn("ValueError", output)
+
+    def test_invalid_filter_log_escapes_client_input(self):
+        """Test client-supplied newlines cannot forge log lines."""
+        with self.assertLogs("dynamic_rest.filters.base", level="WARNING") as logs:
+            self.client.get("/users/?filter{id}=1%0AFORGED%20LINE")
+        lines = "\n".join(logs.output).splitlines()
+        self.assertFalse(any(line.startswith("FORGED") for line in lines))
+        self.assertTrue(any("FORGED LINE" in line for line in lines))
+
+    def test_unknown_filter_field_lists_serializer_choices(self):
+        """Test an unknown filter field is answered with the fields it can use."""
+        response = self.client.get("/users/?filter{nope}=1")
+        self.assertEqual(400, response.status_code)
+        message = json.loads(response.content)[0]
+        prefix = "Invalid filter field: nope. Choices are: "
+        self.assertTrue(message.startswith(prefix), message)
+        choices = message[len(prefix) :].rstrip(".").split(", ")
+        self.assertEqual(sorted(choices), choices)
+        # fields exposed by the serializer, including deferred ones
+        self.assertIn("name", choices)
+        self.assertIn("display_name", choices)
+        # model fields the serializer does not expose, and unfilterable sources
+        for hidden in ("event", "favorite_pet_type", "number_of_cats"):
+            self.assertNotIn(hidden, choices)
+
+    def test_field_error_lists_serializer_choices_not_model_fields(self):
+        """Test Django's list of model fields is replaced by serializer fields."""
+        error = FieldError(
+            "Cannot resolve keyword 'x' into field. Choices are: secret_column, id"
+        )
+        with mock.patch("django.db.models.QuerySet.filter", side_effect=error):
+            response = self.client.get("/users/?filter{name}=1")
+        self.assertEqual(400, response.status_code)
+        message = json.loads(response.content)[0]
+        self.assertTrue(message.startswith("Invalid filter. Choices are: "), message)
+        self.assertIn("display_name", message)
+        self.assertNotIn("secret_column", message)
+
+    def test_sort_on_unknown_field_lists_serializer_choices(self):
+        """Test an unknown sort field is answered with the fields it can use."""
+        response = self.client.get("/users/?sort[]=name&sort[]=nope&sort[]=-bad")
+        self.assertEqual(400, response.status_code)
+        message = json.loads(response.content)[0]
+        prefix = "Invalid filter field: nope, -bad. Choices are: "
+        self.assertTrue(message.startswith(prefix), message)
+        choices = message[len(prefix) :].rstrip(".").split(", ")
+        self.assertEqual(sorted(choices), choices)
+        self.assertIn("name", choices)
+        for hidden in ("event", "favorite_pet_type", "number_of_cats"):
+            self.assertNotIn(hidden, choices)
 
     def _get_list_sql(self, url, table):
         """Return the SQL of the main query on a table for a list request."""
@@ -1681,6 +1755,11 @@ class TestHorsesAPI(TestCase):
         # based off those fields. If a field is listed in the url that is not
         # specified, return a 400
         self.assertEqual(400, response.status_code)
+        # and say which fields can be used
+        self.assertEqual(
+            ["Invalid filter field: origin. Choices are: name."],
+            json.loads(response.content),
+        )
 
 
 class TestZebrasAPI(TestCase):

@@ -5,6 +5,7 @@ import logging
 from functools import reduce
 from typing import Any
 
+from django.core.exceptions import FieldError
 from django.core.exceptions import ValidationError as InternalValidationError
 from django.db.models import Manager, Model, Prefetch, Q, QuerySet
 from rest_framework import serializers
@@ -15,7 +16,7 @@ from rest_framework.request import Request
 
 from dynamic_rest.conf import settings
 from dynamic_rest.constants import VALID_FILTER_OPERATORS
-from dynamic_rest.datastructures import FilterNode, TreeMap
+from dynamic_rest.datastructures import FilterNode, TreeMap, get_filter_choices
 from dynamic_rest.fields import DynamicRelationField
 from dynamic_rest.filters.utils import (
     _and,
@@ -436,14 +437,25 @@ class DynamicFilterBackend(BaseFilterBackend):
                 ) from e
             except (ValueError, TypeError) as exc:
                 # Bad filter value (e.g. wrong type for field lookup).
-                raise ValidationError(
-                    f"Invalid filter value: {exc}"
-                ) from exc
+                # The details can name model fields, so they are logged
+                # (escaped, as they contain client input) and not returned.
+                logger.warning("Invalid filter value: %r", exc)
+                raise ValidationError("Invalid filter value.") from exc
             except Exception as exc:
-                # Other Django query errors (FieldError, DataError, etc.)
-                raise ValidationError(
-                    f"Invalid filter: {exc}"
-                ) from exc
+                # Other Django query errors (FieldError, etc.). These can
+                # list model fields and lookup types, so they are not
+                # returned to the client.
+                logger.warning("Invalid filter: %r", exc)
+                # The traceback prints the raw message, which may contain
+                # client input, so it is only logged at debug level.
+                logger.debug("Invalid filter traceback", exc_info=True)
+                message = "Invalid filter."
+                if isinstance(exc, FieldError) and "Choices are:" in str(exc):
+                    # Django lists model fields here. Offer the fields the
+                    # serializer exposes instead.
+                    choices = ", ".join(get_filter_choices(serializer.get_all_fields()))
+                    message = f"{message} Choices are: {choices}."
+                raise ValidationError(message) from exc
 
         # A serializer can have this optional function
         # to dynamically apply additional filters on

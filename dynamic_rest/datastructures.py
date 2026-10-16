@@ -1,4 +1,6 @@
 """This module contains custom data-structures."""
+from __future__ import annotations
+
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
@@ -23,6 +25,25 @@ def protects_write_only_fields(serializer) -> bool:
         getattr(serializer, "Meta", None), "protect_write_only_fields", None
     )
     return settings.PROTECT_WRITE_ONLY_FIELDS if option is None else bool(option)
+
+
+def get_filter_choices(fields) -> list[str]:
+    """Return the names of the serializer fields a client can filter on.
+
+    Write-only fields and fields that do not map to a single source are
+    left out.
+
+    Arguments:
+        fields: a mapping of field names to serializer fields.
+
+    Returns:
+        A sorted list of field names.
+    """
+    return sorted(
+        name
+        for name, field in fields.items()
+        if not field.write_only and field.source != "*"
+    )
 
 
 class FilterNode(object):
@@ -96,7 +117,10 @@ class FilterNode(object):
             if field_name not in fields or (
                 fields[field_name].write_only and protects_write_only_fields(s)
             ):
-                raise ValidationError(f"Invalid filter field: {field_name}")
+                choices = ", ".join(get_filter_choices(fields))
+                raise ValidationError(
+                    f"Invalid filter field: {field_name}. Choices are: {choices}."
+                )
 
             field = fields[field_name]
 
