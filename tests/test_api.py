@@ -421,6 +421,47 @@ class TestUsersAPI(TestCase):
                 content = self._get_complex_filter(filters, expected_status=400)
                 self.assertEqual([f"{name} must be a list of filter objects."], content)
 
+    def test_complex_filter_applies_keys_next_to_a_combinator(self):
+        """Test .and / .or no longer hide the other keys of the same object."""
+        for filters, expected in (
+            ({".or": [{"name": "1"}, {"name": "2"}], "name": "2"}, ["2"]),
+            ({".or": [{"name": "1"}, {"name": "2"}], "-name": "1"}, ["2"]),
+            ({".and": [{"name": "1"}], "name": "1"}, ["1"]),
+            ({".and": [{"name": "1"}], "name": "2"}, []),
+            ({"$or": [{"name": "1"}, {"name": "2"}], "name": "1"}, ["1"]),
+        ):
+            with self.subTest(filters=filters):
+                content = self._get_complex_filter(filters)
+                self.assertEqual(expected, [u["name"] for u in content["users"]])
+
+    def test_complex_filter_applies_every_combinator(self):
+        """Test several combinators in one object must all match."""
+        for filters, expected in (
+            ({".or": [{"name": "1"}], ".and": [{"name": "2"}]}, []),
+            ({".or": [{"name": "1"}, {"name": "2"}], ".and": [{"-name": "1"}]}, ["2"]),
+            ({".or": [{"name": "1"}, {"name": "2"}], "$or": [{"name": "2"}]}, ["2"]),
+            ({".and": [{"-name": "1"}], "$and": [{"-name": "2"}]}, ["0", "3"]),
+        ):
+            with self.subTest(filters=filters):
+                content = self._get_complex_filter(filters)
+                self.assertEqual(expected, sorted(u["name"] for u in content["users"]))
+
+    def test_complex_filter_applies_keys_next_to_a_nested_combinator(self):
+        """Test the keys next to a combinator are applied at every level."""
+        filters = {
+            ".and": [{".or": [{"name": "1"}, {"name": "2"}], "-name": "2"}],
+        }
+        content = self._get_complex_filter(filters)
+        self.assertEqual(["1"], [u["name"] for u in content["users"]])
+
+    def test_complex_filter_with_a_combinator_and_simple_filters(self):
+        """Test the combinator, its siblings and filter{field} all apply."""
+        f = quote(json.dumps({".or": [{"name": "1"}, {"name": "2"}], "-name": "1"}))
+        response = self.client.get(f"/users/?filter{{}}={f}&filter{{-name}}=0")
+        content = json.loads(response.content.decode("utf-8"))
+        self.assertEqual(200, response.status_code)
+        self.assertEqual(["2"], [u["name"] for u in content["users"]])
+
     def test_complex_filter_must_be_an_object(self):
         """Test a filter{} value that is not an object is rejected."""
         for filters in ([{"name": "1"}], "name", 1):

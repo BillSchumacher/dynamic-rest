@@ -203,16 +203,25 @@ class DynamicFilterBackend(BaseFilterBackend):
         if not isinstance(filters, dict):
             raise ValidationError("filter{} must be a JSON object.")
 
-        for name, combine in (
+        combinators = (
             (".or", _or),
             ("$or", _or),
             (".and", _and),
             ("$and", _and),
-        ):
-            if name in filters:
-                return self._combine_clauses(filters[name], combine, name, serializer)
-
-        clauses = [clause_to_q(clause, serializer) for clause in filters.items()]
+        )
+        # Everything in the object must match: each combinator, and every
+        # other key next to them.
+        clauses = [
+            self._combine_clauses(filters[name], combine, name, serializer)
+            for name, combine in combinators
+            if name in filters
+        ]
+        names = {name for name, _ in combinators}
+        clauses.extend(
+            clause_to_q(clause, serializer)
+            for clause in filters.items()
+            if clause[0] not in names
+        )
         return reduce(_and, clauses) if clauses else Q()
 
     def _create_prefetch(self, source: str, queryset: QuerySet) -> Prefetch:
