@@ -582,6 +582,8 @@ For descending order, simply add a `-` sign. To sort by name in descending order
     ...
 ```
 
+When a sort field crosses a many-to-many or reverse relation, such as `groups.name` above, a record has several values to sort by. DREST orders it by its smallest value (its largest when descending), so each record is listed once. The same applies to a model's default `Meta.ordering` when it crosses such a relation and no `sort[]` is given. When records are updated or deleted, the ordering is ignored.
+
 ## Directory panel
 
 We love the DRF browsable API, but wish that it included a directory that would let you see your entire list of endpoints at a glance from any page.

@@ -12,6 +12,11 @@ from rest_framework.serializers import SerializerMetaclass
 
 from dynamic_rest.datastructures import get_filter_choices, protects_write_only_fields
 from dynamic_rest.fields import DynamicRelationField
+from dynamic_rest.filters.utils import (
+    default_ordering,
+    order_by_unique_rows,
+    ordering_is_multivalued,
+)
 from dynamic_rest.meta import get_lookup_path
 
 if TYPE_CHECKING:
@@ -34,12 +39,30 @@ class DynamicSortingFilter(OrderingFilter):
         to allow the viewset to control the parameter.
         """
         self.ordering_param = view.SORT
-        if ordering := self.get_ordering(request, queryset, view):
+        model = queryset.model
+        ordering = self.get_ordering(request, queryset, view)
+        if not ordering:
+            # The model's default ordering applies when the query is
+            # compiled. Take it over only if it needs to be made unique.
+            default = default_ordering(queryset)
+            if not ordering_is_multivalued(model, default):
+                return queryset
+            ordering = list(default)
+
+        if ordering_is_multivalued(model, ordering):
+            if view.is_update() or view.is_delete():
+                # The order does not matter when changing records, and
+                # ordering across the relation would repeat them.
+                return queryset.order_by()
+            # Order each row by its smallest (or largest) related value, so
+            # that it is listed once.
+            queryset = order_by_unique_rows(queryset, ordering)
+        else:
             queryset = queryset.order_by(*ordering)
-            if any("__" in o for o in ordering):
-                # add distinct() to remove duplicates
-                # in case of order-by-related
-                queryset = queryset.distinct()
+        if any("__" in o for o in ordering):
+            # add distinct() to remove duplicates
+            # in case of order-by-related
+            queryset = queryset.distinct()
         return queryset
 
     def get_ordering(
