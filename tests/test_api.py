@@ -2,8 +2,10 @@
 import datetime
 import json
 import os
+from unittest import mock
 from urllib.parse import quote, quote_plus
 
+from django.core.exceptions import FieldError
 from django.db import connection
 from django.test import override_settings
 from rest_framework.exceptions import ErrorDetail
@@ -394,6 +396,35 @@ class TestUsersAPI(TestCase):
         lines = "\n".join(logs.output).splitlines()
         self.assertFalse(any(line.startswith("FORGED") for line in lines))
         self.assertTrue(any("FORGED LINE" in line for line in lines))
+
+    def test_unknown_filter_field_lists_serializer_choices(self):
+        """Test an unknown filter field is answered with the fields it can use."""
+        response = self.client.get("/users/?filter{nope}=1")
+        self.assertEqual(400, response.status_code)
+        message = json.loads(response.content)[0]
+        prefix = "Invalid filter field: nope. Choices are: "
+        self.assertTrue(message.startswith(prefix), message)
+        choices = message[len(prefix) :].rstrip(".").split(", ")
+        self.assertEqual(sorted(choices), choices)
+        # fields exposed by the serializer, including deferred ones
+        self.assertIn("name", choices)
+        self.assertIn("display_name", choices)
+        # model fields the serializer does not expose, and unfilterable sources
+        for hidden in ("event", "favorite_pet_type", "number_of_cats"):
+            self.assertNotIn(hidden, choices)
+
+    def test_field_error_lists_serializer_choices_not_model_fields(self):
+        """Test Django's list of model fields is replaced by serializer fields."""
+        error = FieldError(
+            "Cannot resolve keyword 'x' into field. Choices are: secret_column, id"
+        )
+        with mock.patch("django.db.models.QuerySet.filter", side_effect=error):
+            response = self.client.get("/users/?filter{name}=1")
+        self.assertEqual(400, response.status_code)
+        message = json.loads(response.content)[0]
+        self.assertTrue(message.startswith("Invalid filter. Choices are: "), message)
+        self.assertIn("display_name", message)
+        self.assertNotIn("secret_column", message)
 
     def test_get_with_filter_exclude(self):
         """Test get with filter exclude."""
