@@ -29,7 +29,7 @@ DYNAMIC_REST = {
     # the object-level permissions of every record in the queryset before
     # updating any of them, and is rejected if any record is denied. By
     # default patch-all only relies on the viewset's queryset and
-    # view-level permissions.
+    # view-level permissions. Can be overridden at the viewset level.
     "PATCH_ALL_CHECK_OBJECT_PERMISSIONS": False,
     # ENABLE_PATCH_ALL: enable/disable patch by queryset
     "ENABLE_PATCH_ALL": False,

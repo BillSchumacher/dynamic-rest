@@ -478,6 +478,7 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
     ENABLE_BULK_PARTIAL_CREATION = settings.ENABLE_BULK_PARTIAL_CREATION
     ENABLE_BULK_UPDATE = settings.ENABLE_BULK_UPDATE
     ENABLE_PATCH_ALL = settings.ENABLE_PATCH_ALL
+    PATCH_ALL_CHECK_OBJECT_PERMISSIONS = settings.PATCH_ALL_CHECK_OBJECT_PERMISSIONS
 
     def _get_bulk_payload(self, request):
         """Get bulk payload from request."""
@@ -599,21 +600,37 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
 
         Raises the usual permission error for the first denied record, so
         nothing has been updated when a request is rejected.
+
+        Returns:
+            The primary keys of the records that were checked. The update
+            must be limited to these, so a record that starts matching
+            after the check cannot be updated without having been checked.
         """
+        checked = []
         for record in queryset.iterator(chunk_size=PATCH_ALL_PERMISSION_CHUNK_SIZE):
             self.check_object_permissions(self.request, record)
+            checked.append(record.pk)
+        return list(dict.fromkeys(checked))
 
     def _patch_all(self, data, query=False):
         """Update all records in a queryset."""
         queryset = self.filter_queryset(self.get_queryset())
-        if settings.PATCH_ALL_CHECK_OBJECT_PERMISSIONS:
-            self._check_patch_all_permissions(queryset)
-        data = self._validate_patch_all(data)
-        updated = (
-            self._patch_all_query(queryset, data)
-            if query
-            else self._patch_all_loop(queryset, data)
-        )
+        update = self._patch_all_query if query else self._patch_all_loop
+
+        if not self.PATCH_ALL_CHECK_OBJECT_PERMISSIONS:
+            data = self._validate_patch_all(data)
+            updated = update(queryset, data)
+            return Response({"meta": {"updated": updated}}, status=status.HTTP_200_OK)
+
+        # Check permissions and update in one transaction, and only update
+        # the records that were checked.
+        with transaction.atomic():
+            pks = self._check_patch_all_permissions(queryset)
+            data = self._validate_patch_all(data)
+            updated = 0
+            for start in range(0, len(pks), PATCH_ALL_PERMISSION_CHUNK_SIZE):
+                chunk = pks[start : start + PATCH_ALL_PERMISSION_CHUNK_SIZE]
+                updated += update(queryset.filter(pk__in=chunk), data)
         return Response({"meta": {"updated": updated}}, status=status.HTTP_200_OK)
 
     def update(self, request, *args, **kwargs):
@@ -631,9 +648,13 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
         via the "patch-all" query parameter.
 
         Patch-all does not check object-level permissions unless the
-        PATCH_ALL_CHECK_OBJECT_PERMISSIONS setting is enabled, in which case
-        every record in the queryset is checked first and the whole request is
-        rejected if any record is denied.
+        PATCH_ALL_CHECK_OBJECT_PERMISSIONS setting (or the viewset attribute
+        of the same name) is enabled. In that case every record in the
+        queryset is checked first, the whole request is rejected if any
+        record is denied, and only the records that were checked are updated.
+        This loads every matching record, and calls the permission classes
+        once per record, so permission classes that query the database cost
+        one query per record.
 
         This parameter can have one of the following values:
 
