@@ -176,19 +176,41 @@ class DynamicFilterBackend(BaseFilterBackend):
         # filter{field} params and the filter{} JSON object are combined.
         return q & self._complex_filters_to_query(complex_filters, serializer)
 
+    def _combine_clauses(self, clauses, combine, name: str, serializer) -> Q:
+        """Combine the clauses of an .and / .or filter into one query.
+
+        Empty clauses are skipped. At least one non-empty clause is required.
+        """
+        if not isinstance(clauses, list) or not all(
+            isinstance(clause, dict) for clause in clauses
+        ):
+            raise ValidationError(f"{name} must be a list of filter objects.")
+
+        queries = [
+            query
+            for query in (
+                self._filters_to_query({"_complex": clause}, serializer)
+                for clause in clauses
+            )
+            if query
+        ]
+        if not queries:
+            raise ValidationError(f"{name} must contain at least one filter.")
+        return reduce(combine, queries)
+
     def _complex_filters_to_query(self, filters: dict, serializer) -> Q:
         """Construct Django Query object from a filter{} JSON object."""
-        if ors := filters.get(".or") or filters.get("$or"):
-            return reduce(
-                _or,
-                [self._filters_to_query({"_complex": f}, serializer) for f in ors],
-            )
+        if not isinstance(filters, dict):
+            raise ValidationError("filter{} must be a JSON object.")
 
-        if ands := filters.get(".and") or filters.get("$and"):
-            return reduce(
-                _and,
-                [self._filters_to_query({"_complex": f}, serializer) for f in ands],
-            )
+        for name, combine in (
+            (".or", _or),
+            ("$or", _or),
+            (".and", _and),
+            ("$and", _and),
+        ):
+            if name in filters:
+                return self._combine_clauses(filters[name], combine, name, serializer)
 
         clauses = [clause_to_q(clause, serializer) for clause in filters.items()]
         return reduce(_and, clauses) if clauses else Q()

@@ -542,6 +542,8 @@ You can filter a user by his name (exact match):
     200 OK
 ```
 
+Inside `.or` / `.and` (also spelled `$or` / `$and`), empty clauses (`{}`) are ignored. The list must hold at least one non-empty filter object, otherwise the request is rejected with a `400`.
+
 The sky is the limit! DREST supports just about every basic filtering scenario and operator that you can use in Django:
 
 -   in
