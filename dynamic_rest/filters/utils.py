@@ -40,7 +40,12 @@ def has_joins(queryset: QuerySet) -> bool:
 
 
 def _is_multivalued(field) -> bool:
-    """Return True if following a relation field can match several rows."""
+    """Return True if following a relation field can match several rows.
+
+    That is the case for many-to-many and reverse foreign key / generic
+    relations, and for a field that does not guarantee a unique target (see
+    `has_multivalued_joins`). Used for joins and for ordering alike.
+    """
     return (
         field.one_to_many
         or field.many_to_many
@@ -139,7 +144,13 @@ def has_multivalued_joins(queryset: QuerySet) -> bool:
     the queryset return duplicate results. Joins that follow a forward
     foreign key or a one-to-one relation cannot.
 
-    A join that cannot be classified is treated as multi-valued.
+    Django's system checks (fields.E310 / fields.E311) require the target of a
+    forward foreign key or foreign object to be unique, which is why such a
+    join is single-valued. A custom field class that opts out by setting
+    `requires_unique_target = False` gives no such guarantee, so joins across
+    it are treated as multi-valued. So is a join that cannot be classified.
+    A project that silences those system checks for a field takes
+    responsibility for the field's joins returning one row.
 
     Arguments:
         queryset: A queryset.
