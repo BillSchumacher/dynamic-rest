@@ -2,8 +2,7 @@
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
-from dynamic_rest.meta import get_model_field, is_model_field
-from dynamic_rest.related import RelatedObject
+from dynamic_rest.meta import get_lookup_path
 
 
 class FilterNode(object):
@@ -78,11 +77,11 @@ class FilterNode(object):
 
             # For remote fields, strip off '_set' for filtering. This is a
             # weird Django inconsistency.
-            model_field_name = field.source or field_name
-            if is_model_field(s.get_model(), model_field_name):
-                model_field = get_model_field(s.get_model(), model_field_name)
-                if isinstance(model_field, RelatedObject):
-                    model_field_name = model_field.field.related_query_name()
+            # Sources that span relations ('profile.display_name') use '.',
+            # but the ORM expects '__'.
+            model_field_name = get_lookup_path(
+                s.get_model(), field.source or field_name
+            )
 
             # If get_all_fields() was used above, field could be unbound,
             # and field.source would be None

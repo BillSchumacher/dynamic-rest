@@ -124,6 +124,37 @@ def is_field_remote(model, field_name):
     return isinstance(model_field, (ManyToManyField, RelatedObject))
 
 
+def get_lookup_path(model, source):
+    """Convert a serializer field source into an ORM lookup path.
+
+    A source may span relations using dots, for example
+    'profile.display_name'. The ORM expects '__' between the parts, and
+    refers to reverse relations by their related query name rather than
+    by the accessor name used on model instances ('user_set' -> 'user').
+    Parts after the first one that cannot be resolved are kept as they are.
+
+    Arguments:
+        model: the model the source is relative to, or None if unknown
+        source: a serializer field source
+
+    Returns:
+        The lookup path, for example 'location__user__name'.
+    """
+    parts = []
+    for name in source.split("."):
+        field = None
+        if model is not None:
+            try:
+                field = get_model_field(model, name)
+            except AttributeError:
+                field = None
+        if isinstance(field, RelatedObject):
+            name = field.field.related_query_name()
+        parts.append(name)
+        model = getattr(field, "related_model", None)
+    return "__".join(parts)
+
+
 def get_model_table(model):
     """Return the table name for a given model."""
     return model._meta.db_table  # pylint: disable=protected-access
