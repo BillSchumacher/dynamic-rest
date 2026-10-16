@@ -34,11 +34,12 @@ class DynamicSortingFilter(OrderingFilter):
         """
         self.ordering_param = view.SORT
         if ordering := self.get_ordering(request, queryset, view):
+            # No distinct() here: ordering across a relation that can repeat
+            # rows cannot be de-duplicated with it, because the ordering
+            # column is part of the SELECT, and the other relations cannot
+            # repeat rows. Duplicates from filters are handled by the
+            # filter backend.
             queryset = queryset.order_by(*ordering)
-            if any("__" in o for o in ordering):
-                # add distinct() to remove duplicates
-                # in case of order-by-related
-                queryset = queryset.distinct()
         return queryset
 
     def get_ordering(

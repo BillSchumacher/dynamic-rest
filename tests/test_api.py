@@ -397,6 +397,24 @@ class TestUsersAPI(TestCase):
         url = "/cats/?filter{home.users.name.in}=0&filter{home.users.name.in}=1"
         self.assertIn("DISTINCT", self._get_list_sql(url, "tests_cat"))
 
+    def test_sort_on_single_valued_relation_is_not_distinct(self):
+        """Test sorting across a relation that cannot repeat rows is plain."""
+        for term in ("location.name", "-location.name"):
+            with self.subTest(term=term):
+                sql = self._get_list_sql(f"/users/?sort[]={term}", "tests_user")
+                self.assertIn("JOIN", sql)
+                self.assertNotIn("DISTINCT", sql)
+
+    def test_sort_keeps_the_distinct_needed_by_a_multi_valued_filter(self):
+        """Test the filter, not the sort, decides whether rows are de-duplicated."""
+        url = "/users/?filter{groups.name.in}=0&filter{groups.name.in}=1"
+        url += "&sort[]=location.name"
+        self.assertIn("DISTINCT", self._get_list_sql(url, "tests_user"))
+
+        ids = [user["id"] for user in self._get_json(url)["users"]]
+        self.assertEqual(len(self.fixture.users), len(ids))
+        self.assertEqual(len(ids), len(set(ids)))
+
     def test_exclude_on_multi_valued_relation_returns_each_row_once(self):
         """Test an exclude on a multi-valued relation does not repeat rows."""
         content = self._get_json("/users/?filter{-groups.name}=no-such-group")
