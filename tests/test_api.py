@@ -464,6 +464,70 @@ class TestUsersAPI(TestCase):
         self.assertEqual(200, response.status_code)
         self.assertEqual(["2"], [u["name"] for u in content["users"]])
 
+    def test_complex_filter_rejects_non_scalar_values(self):
+        """Test a list or object cannot be used where one value is expected."""
+        for filters in (
+            {"name": ["1", "2"]},
+            {"name": {"a": 1}},
+            {"-name": ["1", "2"]},
+            {"name.icontains": ["1"]},
+            {"id.gt": [1]},
+            {".and": [{"name": ["1", "2"]}]},
+            {".or": [{"name": "1"}, {"name": {"a": 1}}]},
+        ):
+            with self.subTest(filters=filters):
+                content = self._get_complex_filter(filters, expected_status=400)
+                self.assertEqual(1, len(content))
+                self.assertIn("expects a single value", content[0])
+
+    def test_complex_filter_in_needs_a_list_of_values(self):
+        """Test the in operator takes a list of single values."""
+        for filters in (
+            {"name.in": "1"},
+            {"name.in": {"a": 1}},
+            {"name.in": [["1"]]},
+            {"name.in": [{"a": 1}]},
+        ):
+            with self.subTest(filters=filters):
+                content = self._get_complex_filter(filters, expected_status=400)
+                self.assertIn("expects a list of single values", content[0])
+
+        content = self._get_complex_filter({"name.in": ["1", "2"]})
+        self.assertEqual(["1", "2"], sorted(u["name"] for u in content["users"]))
+        content = self._get_complex_filter({"name.in": []})
+        self.assertEqual([], content["users"])
+
+    def test_complex_filter_range_needs_two_values(self):
+        """Test the range operator takes exactly two single values."""
+        ids = sorted(user.pk for user in self.fixture.users)
+        for filters in (
+            {"id.range": ids[1]},
+            {"id.range": [ids[1]]},
+            {"id.range": ids[1:]},
+            {"id.range": [[ids[1]], ids[2]]},
+        ):
+            with self.subTest(filters=filters):
+                content = self._get_complex_filter(filters, expected_status=400)
+                self.assertIn("expects two single values", content[0])
+
+        content = self._get_complex_filter({"id.range": ids[1:3]})
+        self.assertEqual(ids[1:3], sorted(u["id"] for u in content["users"]))
+
+    def test_complex_filter_still_accepts_single_values(self):
+        """Test strings, numbers, booleans and null are still valid values."""
+        user = self.fixture.users[1]
+        for filters, expected in (
+            ({"name": "1"}, ["1"]),
+            ({"id": user.pk}, ["1"]),
+            ({"id.gte": user.pk, "id.lte": user.pk}, ["1"]),
+            ({"name.isnull": False, "id": user.pk}, ["1"]),
+            ({"name": None}, []),
+            ({"name.isnull": True}, []),
+        ):
+            with self.subTest(filters=filters):
+                content = self._get_complex_filter(filters)
+                self.assertEqual(expected, [u["name"] for u in content["users"]])
+
     def test_complex_filter_must_be_an_object(self):
         """Test a filter{} value that is not an object is rejected."""
         for filters in ([{"name": "1"}], "name", 1):
